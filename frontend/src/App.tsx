@@ -1,45 +1,82 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Header } from './components/UI/Header';
 import { FileExplorer } from './components/FileExplorer/FileExplorer';
 import { CodeViewer } from './components/Editor/CodeViewer';
 import { CallGraphPanel } from './components/CallGraph/CallGraphPanel';
+import { ResizeGrip } from './components/UI/ResizeGrip';
 import { SymbolSearch } from './components/UI/SymbolSearch';
+import { ShortcutsModal } from './components/UI/ShortcutsModal';
 import { useTraceStore } from './store/useTraceStore';
 
 export const App: React.FC = () => {
-  const { loadWorkspace, isLoading } = useTraceStore();
+  const {
+    loadWorkspace,
+    isSidebarOpen,
+    isGraphOpen,
+    isGraphFullScreen,
+    sidebarWidth,
+    setSidebarWidth,
+    saveSidebarWidth,
+    graphWidth,
+    setGraphWidth,
+    saveGraphWidth,
+  } = useTraceStore();
+
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
     loadWorkspace();
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-[#181818] text-slate-800 dark:text-[#cccccc] transition-colors">
-      {/* Top Navigation Bar */}
-      <Header />
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-[#181818] text-slate-800 dark:text-[#cccccc]">
+      {/* Top Navigation & Command Bar */}
+      <Header onOpenShortcuts={() => setShowShortcuts(true)} />
 
-      {/* Main 3-Pane Code Exploration View */}
+      {/* Main Resizable Workspace Area */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left: Workspace Tree & Symbol Hierarchy */}
+        {/* Left: Resizable File Explorer Sidebar */}
         <FileExplorer />
 
-        {/* Center: Read-Only Monaco Editor & Breadcrumbs */}
+        {/* Resize Handle between Sidebar & Code Viewer */}
+        {isSidebarOpen && (
+          <ResizeGrip
+            initialWidth={sidebarWidth}
+            minWidth={160}
+            maxWidth={600}
+            direction="right"
+            onResize={setSidebarWidth}
+            onResizeEnd={saveSidebarWidth}
+          />
+        )}
+
+        {/* Center: Flexible Code Viewer Area */}
         <CodeViewer />
 
-        {/* Right: Interactive Call Graph Panel (@xyflow/react) */}
+        {/* Resize Handle between Code Viewer & Graph Viewer */}
+        {isGraphOpen && !isGraphFullScreen && (
+          <ResizeGrip
+            initialWidth={graphWidth}
+            minWidth={340}
+            maxWidth={typeof window !== 'undefined' ? window.innerWidth - 200 : 1200}
+            direction="left"
+            onResize={setGraphWidth}
+            onResizeEnd={saveGraphWidth}
+          />
+        )}
+
+        {/* Right / Fullscreen: Call Graph Engine */}
         <CallGraphPanel />
       </div>
 
       {/* Quick Symbol Search Modal (Cmd+P) */}
       <SymbolSearch />
 
-      {/* Background loading spinner overlay */}
-      {isLoading && (
-        <div className="fixed bottom-3 right-3 bg-white/95 dark:bg-[#252528]/95 backdrop-blur-xs border border-slate-200 dark:border-[#3e3e42] px-2.5 py-1 rounded-md shadow-lg text-[10.5px] text-slate-700 dark:text-[#aaaaaa] flex items-center space-x-2 z-50 pointer-events-none">
-          <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span>Indexing / Tracing...</span>
-        </div>
-      )}
+      {/* Keyboard Shortcuts & Help Modal */}
+      <ShortcutsModal
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+      />
     </div>
   );
 };

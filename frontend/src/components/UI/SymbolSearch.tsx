@@ -4,6 +4,7 @@ import { SymbolInfo } from '../../types';
 import { searchSymbols } from '../../api/client';
 import { useTraceStore } from '../../store/useTraceStore';
 import { SymbolBadge } from './SymbolBadge';
+import { getFileIconColor } from '../Editor/EditorTabs';
 
 export const SymbolSearch: React.FC = () => {
   const { isSearching, toggleSearch, selectFile, jumpToLine, activeFilePath } = useTraceStore();
@@ -53,7 +54,7 @@ export const SymbolSearch: React.FC = () => {
       } catch (err) {
         console.error('Search error:', err);
       }
-    }, 150);
+    }, 120);
 
     return () => clearTimeout(timer);
   }, [query]);
@@ -84,81 +85,115 @@ export const SymbolSearch: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-xs flex items-start justify-center pt-20 z-50 select-none"
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-start justify-center pt-14 z-50 select-none animate-in fade-in duration-100"
       onClick={() => toggleSearch(false)}
     >
       <div
-        className="w-[580px] bg-white dark:bg-[#252528] border border-slate-200 dark:border-[#3e3e42] rounded-xl shadow-2xl overflow-hidden flex flex-col transition-colors"
+        className="w-[620px] max-w-[90vw] bg-white dark:bg-[#252528] border border-slate-300 dark:border-[#3e3e42] rounded-xl shadow-2xl overflow-hidden flex flex-col transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Search Input */}
-        <div className="flex items-center px-3.5 py-2.5 border-b border-slate-200 dark:border-[#3e3e42] bg-slate-50 dark:bg-[#1e1e20]">
-          <Search className="w-4 h-4 text-slate-400 dark:text-[#888888] mr-2.5 shrink-0" />
+        {/* Command Palette Input */}
+        <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-[#333333] bg-slate-50/50 dark:bg-[#1e1e20]">
+          <Search className="w-4 h-4 text-blue-500 mr-3 shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type symbol name (e.g. PyLong_FromLong, IntObject, Greeter)..."
-            className="flex-1 bg-transparent text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-[#666666] outline-none"
+            placeholder="Type a symbol name to open (e.g. PyLong_FromLong, Greet, Node)..."
+            className="flex-1 bg-transparent text-[13px] text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-[#777777] outline-none"
           />
           <button
             onClick={() => toggleSearch(false)}
             className="p-1 hover:bg-slate-200 dark:hover:bg-[#333336] rounded text-slate-400 dark:text-[#888888] hover:text-slate-800 dark:hover:text-white transition-colors"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Results List */}
-        <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
+        <div className="max-h-88 overflow-y-auto p-1.5 space-y-0.5">
           {results.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-400 dark:text-[#777777]">
-              {query ? 'No matching symbols found' : 'Type to search functions, structs, classes, variables'}
+            <div className="p-6 text-center text-xs text-slate-400 dark:text-[#777777]">
+              {query
+                ? `No symbols matching "${query}"`
+                : 'Search functions, structs, types, methods across codebase'}
             </div>
           ) : (
-            results.map((sym, idx) => (
-              <div
-                key={sym.id}
-                onClick={() => handleSelect(sym)}
-                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors text-xs ${
-                  idx === selectedIndex
-                    ? 'bg-blue-50 dark:bg-[#3b82f6]/20 text-blue-900 dark:text-white border border-blue-200 dark:border-[#3b82f6]/40'
-                    : 'hover:bg-slate-100 dark:hover:bg-[#2d2d30] text-slate-700 dark:text-[#cccccc]'
-                }`}
-              >
-                <div className="flex items-center space-x-2 truncate">
-                  <SymbolBadge kind={sym.kind} />
-                  <span className="font-mono font-semibold truncate text-[11.5px]">{sym.name}</span>
-                  {sym.scope && (
-                    <span className="text-[10px] text-slate-400 dark:text-[#888888] font-mono truncate">
-                      ({sym.scope})
-                    </span>
-                  )}
-                </div>
+            results.map((sym, idx) => {
+              const isSelected = idx === selectedIndex;
+              const fileName = sym.file.split('/').pop() || sym.file;
+              const iconColor = getFileIconColor(fileName);
 
-                <div className="flex items-center space-x-2 text-[10px] text-slate-400 dark:text-[#777777] font-mono shrink-0 pl-3">
-                  <span>{sym.file.split('/').pop()}:{sym.range.start.line}</span>
-                  {idx === selectedIndex && (
-                    <CornerDownLeft className="w-3 h-3 text-blue-500 dark:text-blue-400 shrink-0" />
-                  )}
+              return (
+                <div
+                  key={sym.id}
+                  onClick={() => handleSelect(sym)}
+                  className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors text-xs ${
+                    isSelected
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'hover:bg-slate-100 dark:hover:bg-[#2d2d30] text-slate-700 dark:text-[#cccccc]'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2.5 truncate">
+                    <SymbolBadge kind={sym.kind} size="sm" />
+                    <span className="font-mono font-semibold truncate text-[12px]">
+                      {sym.name}
+                    </span>
+                    {sym.scope && (
+                      <span
+                        className={`text-[10.5px] font-mono truncate ${
+                          isSelected
+                            ? 'text-blue-100'
+                            : 'text-slate-400 dark:text-[#888888]'
+                        }`}
+                      >
+                        ({sym.scope})
+                      </span>
+                    )}
+                  </div>
+
+                  <div
+                    className={`flex items-center space-x-2 text-[10.5px] font-mono shrink-0 pl-3 ${
+                      isSelected
+                        ? 'text-blue-100'
+                        : 'text-slate-400 dark:text-[#777777]'
+                    }`}
+                  >
+                    <span className={isSelected ? 'text-white' : iconColor}>
+                      {fileName}:{sym.range.start.line}
+                    </span>
+                    {isSelected && (
+                      <CornerDownLeft className="w-3.5 h-3.5 text-white shrink-0" />
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-3 py-1.5 bg-slate-50 dark:bg-[#1a1a1c] border-t border-slate-200 dark:border-[#333336] flex items-center justify-between text-[10px] text-slate-400 dark:text-[#777777]">
-          <div className="flex items-center space-x-2">
-            <span>Navigation:</span>
-            <kbd className="bg-white dark:bg-[#2a2a2d] px-1 py-0.5 rounded text-slate-500 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">↑</kbd>
-            <kbd className="bg-white dark:bg-[#2a2a2d] px-1 py-0.5 rounded text-slate-500 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">↓</kbd>
-            <span>Select:</span>
-            <kbd className="bg-white dark:bg-[#2a2a2d] px-1 py-0.5 rounded text-slate-500 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">↵</kbd>
+        <div className="px-3.5 py-2 bg-slate-50 dark:bg-[#1a1a1c] border-t border-slate-200 dark:border-[#333336] flex items-center justify-between text-[10.5px] text-slate-400 dark:text-[#777777]">
+          <div className="flex items-center space-x-2.5">
+            <span>Navigate:</span>
+            <kbd className="bg-white dark:bg-[#2a2a2d] px-1.5 py-0.5 rounded text-slate-600 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">
+              ↑
+            </kbd>
+            <kbd className="bg-white dark:bg-[#2a2a2d] px-1.5 py-0.5 rounded text-slate-600 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">
+              ↓
+            </kbd>
+            <span>Open:</span>
+            <kbd className="bg-white dark:bg-[#2a2a2d] px-1.5 py-0.5 rounded text-slate-600 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">
+              ↵
+            </kbd>
+            <span>Dismiss:</span>
+            <kbd className="bg-white dark:bg-[#2a2a2d] px-1.5 py-0.5 rounded text-slate-600 dark:text-[#999999] border border-slate-200 dark:border-[#3e3e42]">
+              esc
+            </kbd>
           </div>
-          <span>TraceLens Global Index</span>
+          <span className="font-medium">Quick Open</span>
         </div>
       </div>
     </div>

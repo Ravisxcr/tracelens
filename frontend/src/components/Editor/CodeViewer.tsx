@@ -1,8 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import Editor, { Monaco, OnMount } from '@monaco-editor/react';
 import type * as monacoEditor from 'monaco-editor';
+import { Network, Search, GitGraph, BookOpen, Layers } from 'lucide-react';
 import { useTraceStore, traceStore } from '../../store/useTraceStore';
 import { useTheme } from '../../store/useTheme';
+import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
 
 export const CodeViewer: React.FC = () => {
@@ -12,6 +14,7 @@ export const CodeViewer: React.FC = () => {
     setCursorPosition,
     jumpToDefinition,
     openCallGraph,
+    toggleSearch,
   } = useTraceStore();
 
   const { resolvedTheme } = useTheme();
@@ -28,9 +31,9 @@ export const CodeViewer: React.FC = () => {
     // Register hover and command providers once
     registerCustomProviders(monaco);
 
-    // Track cursor movement for breadcrumbs
+    // Track cursor movement for breadcrumbs and status bar
     editor.onDidChangeCursorPosition((e) => {
-      setCursorPosition(e.position.lineNumber);
+      setCursorPosition(e.position.lineNumber, e.position.column);
     });
   };
 
@@ -55,7 +58,6 @@ export const CodeViewer: React.FC = () => {
           if (!word) return null;
 
           const symbolName = word.word;
-          const activePath = traceStore.getState().activeFilePath || '';
 
           return {
             range: new monaco.Range(
@@ -86,7 +88,7 @@ export const CodeViewer: React.FC = () => {
           if (!word) return null;
 
           jumpToDefinition(word.word);
-          return null; // Navigation is handled smoothly by TraceLens store
+          return null; // Navigation handled smoothly by TraceLens store
         },
       });
     });
@@ -122,19 +124,6 @@ export const CodeViewer: React.FC = () => {
     return () => clearTimeout(timer);
   }, [targetLine, activeFile]);
 
-  if (!activeFile) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-[#1e1e1e] text-slate-500 dark:text-[#666666] select-none">
-        <div className="text-center space-y-2">
-          <p className="text-sm font-medium">Select a file from the explorer to begin tracing</p>
-          <p className="text-xs text-slate-400 dark:text-[#555555]">
-            Use <kbd className="bg-white dark:bg-[#2a2a2b] px-1.5 py-0.5 rounded text-slate-500 dark:text-[#888888] border border-slate-200 dark:border-[#3e3e42]">⌘P</kbd> to search symbols
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Map file language to Monaco language
   const getMonacoLanguage = (lang: string) => {
     switch (lang) {
@@ -156,45 +145,111 @@ export const CodeViewer: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#1e1e1e] overflow-hidden transition-colors">
-      <Breadcrumbs />
+    <main className="flex-1 flex flex-col h-full bg-[#1e1e1e] dark:bg-[#1e1e1e] bg-white overflow-hidden transition-none">
+      <EditorTabs />
 
-      <div className="flex-1 relative">
-        <Editor
-          height="100%"
-          theme={resolvedTheme === 'dark' ? 'vs-dark' : 'vs'}
-          language={getMonacoLanguage(activeFile.language)}
-          value={activeFile.content}
-          onMount={handleEditorDidMount}
-          options={{
-            readOnly: true,
-            domReadOnly: true,
-            fontSize: 13,
-            lineHeight: 20,
-            fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
-            minimap: {
-              enabled: true,
-              maxColumn: 60,
-              renderCharacters: false,
-            },
-            stickyScroll: {
-              enabled: true,
-              maxLineCount: 5,
-            },
-            scrollBeyondLastLine: false,
-            smoothScrolling: true,
-            cursorBlinking: 'smooth',
-            lineNumbers: 'on',
-            glyphMargin: true,
-            folding: true,
-            renderLineHighlight: 'all',
-            automaticLayout: true,
-            contextmenu: true,
-            links: true,
-          }}
-        />
-      </div>
-    </div>
+      {activeFile ? (
+        <>
+          <Breadcrumbs />
+
+          <div className="flex-1 relative">
+            <Editor
+              height="100%"
+              theme={resolvedTheme === 'dark' ? 'vs-dark' : 'vs'}
+              language={getMonacoLanguage(activeFile.language)}
+              value={activeFile.content}
+              onMount={handleEditorDidMount}
+              options={{
+                readOnly: true,
+                domReadOnly: true,
+                fontSize: 13,
+                lineHeight: 20,
+                fontFamily: "'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace",
+                minimap: {
+                  enabled: true,
+                  maxColumn: 60,
+                  renderCharacters: false,
+                },
+                stickyScroll: {
+                  enabled: true,
+                  maxLineCount: 5,
+                },
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                cursorBlinking: 'smooth',
+                lineNumbers: 'on',
+                glyphMargin: true,
+                folding: true,
+                renderLineHighlight: 'all',
+                automaticLayout: true,
+                contextmenu: true,
+                links: true,
+              }}
+            />
+          </div>
+        </>
+      ) : (
+        /* Empty / Welcome State styled like VS Code / code-server */
+        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-[#1e1e1e] text-slate-500 dark:text-[#888888] select-none p-6">
+          <div className="max-w-md w-full text-center space-y-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 shadow-inner">
+              <Network className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">
+                TraceLens Workbench
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-[#888888] mt-1.5">
+                Fast code comprehension, call graphs, and symbol tracing
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5 text-left text-xs bg-white dark:bg-[#252528] p-4 rounded-xl border border-slate-200 dark:border-[#333333] shadow-sm">
+              <div
+                onClick={() => toggleSearch(true)}
+                className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-[#2e2e32] cursor-pointer transition-colors"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <Search className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+                  <span className="font-medium text-slate-700 dark:text-[#cccccc]">Quick Open Symbol</span>
+                </div>
+                <kbd className="bg-slate-100 dark:bg-[#18181a] px-2 py-0.5 rounded text-[10px] text-slate-500 dark:text-[#888888] border border-slate-200 dark:border-[#444448]">
+                  ⌘P
+                </kbd>
+              </div>
+
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-[#2e2e32] transition-colors">
+                <div className="flex items-center space-x-2.5">
+                  <Layers className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                  <span className="font-medium text-slate-700 dark:text-[#cccccc]">Toggle Sidebar</span>
+                </div>
+                <kbd className="bg-slate-100 dark:bg-[#18181a] px-2 py-0.5 rounded text-[10px] text-slate-500 dark:text-[#888888] border border-slate-200 dark:border-[#444448]">
+                  ⌘B
+                </kbd>
+              </div>
+
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-[#2e2e32] transition-colors">
+                <div className="flex items-center space-x-2.5">
+                  <GitGraph className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+                  <span className="font-medium text-slate-700 dark:text-[#cccccc]">Jump to Definition</span>
+                </div>
+                <kbd className="bg-slate-100 dark:bg-[#18181a] px-2 py-0.5 rounded text-[10px] text-slate-500 dark:text-[#888888] border border-slate-200 dark:border-[#444448]">
+                  F12 / ⌘Click
+                </kbd>
+              </div>
+
+              <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-[#2e2e32] transition-colors">
+                <div className="flex items-center space-x-2.5">
+                  <BookOpen className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                  <span className="font-medium text-slate-700 dark:text-[#cccccc]">Select file to start</span>
+                </div>
+                <span className="text-[10.5px] text-slate-400">File Tree</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
   );
 };
-
