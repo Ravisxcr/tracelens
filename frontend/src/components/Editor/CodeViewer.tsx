@@ -4,8 +4,24 @@ import type * as monacoEditor from 'monaco-editor';
 import { Network, Search, GitGraph, BookOpen, Layers } from 'lucide-react';
 import { useTraceStore, traceStore } from '../../store/useTraceStore';
 import { useTheme } from '../../store/useTheme';
+import { SymbolInfo } from '../../types';
 import { EditorTabs } from './EditorTabs';
 import { Breadcrumbs } from './Breadcrumbs';
+
+// Common programming language keywords to ignore for hover tooltips
+const LANGUAGE_KEYWORDS = new Set([
+  'import', 'package', 'return', 'if', 'else', 'for', 'range', 'switch', 'case', 'default',
+  'var', 'const', 'type', 'struct', 'interface', 'func', 'function', 'def', 'class', 'from',
+  'as', 'true', 'false', 'nil', 'null', 'undefined', 'void', 'int', 'string', 'bool', 'float',
+  'char', 'include', 'define', 'let', 'new', 'this', 'self', 'public', 'private', 'protected',
+  'static', 'final', 'break', 'continue', 'goto', 'select', 'chan', 'map', 'make', 'len', 'cap',
+  'print', 'println', 'panic', 'recover', 'try', 'catch', 'finally', 'throw', 'except', 'with',
+  'yield', 'lambda', 'async', 'await', 'export', 'extends', 'implements', 'enum',
+]);
+
+// Module-level singleton tracking to prevent duplicate provider registrations across renders
+let providerDisposables: monacoEditor.IDisposable[] = [];
+let commandsRegistered = false;
 
 export const CodeViewer: React.FC = () => {
   const {
@@ -28,36 +44,88 @@ export const CodeViewer: React.FC = () => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Register hover and command providers once
+    // Register hover and command providers once without duplicates
     registerCustomProviders(monaco);
 
-    // Track cursor movement for breadcrumbs and status bar
+    // Track cursor movement for breadcrumbs
     editor.onDidChangeCursorPosition((e) => {
       setCursorPosition(e.position.lineNumber, e.position.column);
     });
   };
 
-  // Register commands and providers in Monaco
+  // Register commands and providers in Monaco with strict deduplication
   const registerCustomProviders = (monaco: Monaco) => {
-    // Command: Jump to Definition
-    monaco.editor.registerCommand('tracelens.jumpDef', (_, name: string, file: string) => {
-      jumpToDefinition(name, file);
-    });
+    // Register commands only once
+    if (!commandsRegistered) {
+      try {
+        monaco.editor.registerCommand('tracelens.jumpDef', (_, name: string, file: string) => {
+          traceStore.jumpToDefinition(name, file);
+        });
+        monaco.editor.registerCommand('tracelens.traceGraph', (_, symbol: string, file: string) => {
+          traceStore.openCallGraph(symbol, file);
+        });
+        commandsRegistered = true;
+      } catch {
+        // Already registered
+      }
+    }
 
-    // Command: Open Call Graph
-    monaco.editor.registerCommand('tracelens.traceGraph', (_, symbol: string, file: string) => {
-      openCallGraph(symbol, file);
-    });
+    // Clean up any previously registered providers to ensure zero duplicate popups
+    providerDisposables.forEach((d) => d.dispose());
+    providerDisposables = [];
 
-    // Register Hover Provider for Go, TS/JS, C, C++, Python
+    // Register Hover and Definition Providers once per supported language
     const languages = ['go', 'typescript', 'javascript', 'c', 'cpp', 'python'];
     languages.forEach((lang) => {
-      monaco.languages.registerHoverProvider(lang, {
+      const hoverDisp = monaco.languages.registerHoverProvider(lang, {
         provideHover: (model, position) => {
           const word = model.getWordAtPosition(position);
           if (!word) return null;
 
           const symbolName = word.word;
+          if (!symbolName || symbolName.length <= 1 || LANGUAGE_KEYWORDS.has(symbolName.toLowerCase())) {
+            return null;
+          }
+
+          const state = traceStore.getState();
+          const currentFile = state.activeFile;
+
+          // Look for symbol in active file
+          let matchedSymbol: SymbolInfo | undefined;
+          if (currentFile && currentFile.symbols) {
+            const findInSymbols = (syms: SymbolInfo[]): SymbolInfo | undefined => {
+              for (const s of syms) {
+                if (s.name === symbolName) return s;
+                if (s.children && s.children.length > 0) {
+                  const found = findInSymbols(s.children);
+                  if (found) return found;
+                }
+              }
+              return undefined;
+            };
+            matchedSymbol = findInSymbols(currentFile.symbols);
+          }
+
+          const lines: string[] = [];
+          if (matchedSymbol) {
+            const langMode = currentFile?.language || 'plaintext';
+            if (matchedSymbol.signature) {
+              lines.push(`\`\`\`${langMode}\n${matchedSymbol.signature}\n\`\`\``);
+            } else {
+              lines.push(`\`\`\`${langMode}\n${matchedSymbol.name}\n\`\`\``);
+            }
+            lines.push(`*${matchedSymbol.kind}*${matchedSymbol.scope ? ` • (${matchedSymbol.scope})` : ''}`);
+          } else {
+            lines.push(`**TraceLens Symbol**: \`${symbolName}\``);
+          }
+
+          lines.push(
+            `---\n[Jump to Definition](command:tracelens.jumpDef?${encodeURIComponent(
+              JSON.stringify([symbolName, ''])
+            )}) • [Trace Call Graph](command:tracelens.traceGraph?${encodeURIComponent(
+              JSON.stringify([symbolName, ''])
+            )})`
+          );
 
           return {
             range: new monaco.Range(
@@ -67,32 +135,46 @@ export const CodeViewer: React.FC = () => {
               word.endColumn
             ),
             contents: [
-              { value: `**TraceLens Symbol**: \`${symbolName}\`` },
               {
-                value: `[Jump to Definition](command:tracelens.jumpDef?${encodeURIComponent(
-                  JSON.stringify([symbolName, ''])
-                )}) • [Trace Call Graph](command:tracelens.traceGraph?${encodeURIComponent(
-                  JSON.stringify([symbolName, ''])
-                )})`,
+                value: lines.join('\n\n'),
                 isTrusted: true,
               },
             ],
           };
         },
       });
+      providerDisposables.push(hoverDisp);
 
       // Register Definition Provider for Cmd+Click / F12
-      monaco.languages.registerDefinitionProvider(lang, {
+      const defDisp = monaco.languages.registerDefinitionProvider(lang, {
         provideDefinition: async (model, position) => {
           const word = model.getWordAtPosition(position);
           if (!word) return null;
+          const name = word.word;
+          if (LANGUAGE_KEYWORDS.has(name.toLowerCase())) return null;
 
-          jumpToDefinition(word.word);
-          return null; // Navigation handled smoothly by TraceLens store
+          traceStore.jumpToDefinition(name);
+          return null;
         },
       });
+      providerDisposables.push(defDisp);
     });
   };
+
+  // Clean up providers on unmount
+  useEffect(() => {
+    return () => {
+      providerDisposables.forEach((d) => d.dispose());
+      providerDisposables = [];
+    };
+  }, []);
+
+  // Synchronize Monaco editor theme immediately when resolvedTheme changes
+  useEffect(() => {
+    if (monacoRef.current) {
+      monacoRef.current.editor.setTheme(resolvedTheme === 'dark' ? 'vs-dark' : 'vs');
+    }
+  }, [resolvedTheme]);
 
   // React to targetLine jumps (e.g. from FileExplorer or Definition Jumps)
   useEffect(() => {
@@ -189,7 +271,7 @@ export const CodeViewer: React.FC = () => {
           </div>
         </>
       ) : (
-        /* Empty / Welcome State styled like VS Code / code-server */
+        /* Empty / Welcome State */
         <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-[#1e1e1e] text-slate-500 dark:text-[#888888] select-none p-6">
           <div className="max-w-md w-full text-center space-y-6">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 shadow-inner">

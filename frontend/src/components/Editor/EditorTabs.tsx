@@ -39,7 +39,7 @@ export const EditorTabs: React.FC = () => {
   }
 
   return (
-    <div className="h-7.5 bg-slate-100 dark:bg-[#181818] border-b border-slate-200 dark:border-[#252526] flex items-center select-none shrink-0 overflow-hidden transition-none">
+    <div className="h-[30px] bg-slate-100 dark:bg-[#181818] border-b border-slate-200 dark:border-[#252526] flex items-center select-none shrink-0 overflow-hidden transition-none">
       {/* Scrollable Tabs Container */}
       <div className="flex items-center h-full overflow-x-auto no-scrollbar">
         {openTabs.map((path) => {

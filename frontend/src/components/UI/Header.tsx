@@ -60,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenShortcuts }) => {
         </button>
 
         <div className="flex items-center space-x-1.5 font-semibold text-xs tracking-wide text-slate-800 dark:text-white">
-          <div className="w-4.5 h-4.5 rounded bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white shadow-xs">
+          <div className="w-[18px] h-[18px] rounded bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white shadow-xs">
             <Network className="w-3 h-3" />
           </div>
           <span>TraceLens</span>
