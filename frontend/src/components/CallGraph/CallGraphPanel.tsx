@@ -169,8 +169,8 @@ export const CallGraphPanel: React.FC = () => {
           : 'bg-slate-50 dark:bg-[#181818] border-l border-slate-200 dark:border-[#2b2b2b] flex flex-col h-full select-none shrink-0 z-20 overflow-hidden'
       }
     >
-      {/* Panel Header - compact 30px matching EditorTabs */}
-      <div className="h-[30px] bg-slate-100 dark:bg-[#181818] border-b border-slate-200 dark:border-[#252526] px-2.5 flex items-center justify-between shrink-0">
+      {/* Panel Header - compact h-7 matching EditorTabs and Explorer */}
+      <div className="h-7 bg-slate-100 dark:bg-[#181818] border-b border-slate-200 dark:border-[#252526] px-2.5 flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-1.5 truncate">
           <GitGraph className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0" />
           <span className="font-semibold text-[11px] tracking-wider uppercase text-slate-600 dark:text-[#bbbbbb]">
