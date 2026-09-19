@@ -32,9 +32,15 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Type-check Frontend (TypeScript)
-        run: npx tsc --noEmit
+      - name: Build Frontend & Type-check
+        run: npm run build
         working-directory: frontend
+
+      - name: Sync Frontend Assets to Embed Directory
+        run: |
+          mkdir -p backend/internal/web/dist
+          rm -rf backend/internal/web/dist/*
+          cp -r frontend/dist/* backend/internal/web/dist/
 
       - name: Run Backend Tests
         run: go test -v ./...

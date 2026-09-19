@@ -1,0 +1,2 @@
+# Keep backend/internal/web/dist tracked so go:embed pattern all:dist matches even on fresh clone
+

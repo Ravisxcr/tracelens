@@ -30,13 +30,15 @@ go.work.sum
 # ------------------------------------------
 node_modules/
 frontend/node_modules/
-dist/
+/dist/
 frontend/dist/
 dist-ssr/
 frontend/dist-ssr/
 .vite/
 frontend/.vite/
 backend/internal/web/dist/assets/
+!backend/internal/web/dist/
+!backend/internal/web/dist/.gitkeep
 
 # NPM / Yarn / PNPM logs
 npm-debug.log*
