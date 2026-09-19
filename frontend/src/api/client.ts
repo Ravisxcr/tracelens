@@ -37,19 +37,43 @@ export async function fetchReferences(name: string): Promise<{ symbol: string; r
   return res.json();
 }
 
+const callGraphClientCache = new Map<string, CallGraphResponse>();
+const MAX_CACHE_SIZE = 128;
+
+export function clearCallGraphCache(): void {
+  callGraphClientCache.clear();
+}
+
 export async function fetchCallGraph(
   symbol: string,
   file?: string,
-  depth = 1
+  depth?: number,
+  limit?: number
 ): Promise<CallGraphResponse> {
+  const resolvedDepth = depth ?? 1;
+  const resolvedLimit = limit ?? 50;
+  const cacheKey = `${symbol}|${file || ''}|${resolvedDepth}|${resolvedLimit}`;
+  if (callGraphClientCache.has(cacheKey)) {
+    return callGraphClientCache.get(cacheKey)!;
+  }
+
   const params = new URLSearchParams();
   params.set('symbol', symbol);
   if (file) params.set('file', file);
-  params.set('depth', depth.toString());
+  params.set('depth', resolvedDepth.toString());
+  params.set('limit', resolvedLimit.toString());
 
   const res = await fetch(`${API_BASE}/callgraph?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed to fetch call graph: ${res.statusText}`);
-  return res.json();
+  const data: CallGraphResponse = await res.json();
+
+  if (callGraphClientCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = callGraphClientCache.keys().next().value;
+    if (oldestKey) callGraphClientCache.delete(oldestKey);
+  }
+  callGraphClientCache.set(cacheKey, data);
+
+  return data;
 }
 
 export async function searchSymbols(query: string): Promise<{ query: string; symbols: SymbolInfo[] }> {
@@ -59,6 +83,7 @@ export async function searchSymbols(query: string): Promise<{ query: string; sym
 }
 
 export async function openWorkspace(path: string): Promise<{ path: string; stats: IndexStats }> {
+  clearCallGraphCache();
   const res = await fetch(`${API_BASE}/workspace/open`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -67,4 +92,3 @@ export async function openWorkspace(path: string): Promise<{ path: string; stats
   if (!res.ok) throw new Error(`Failed to open workspace: ${res.statusText}`);
   return res.json();
 }
-

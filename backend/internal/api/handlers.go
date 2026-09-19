@@ -138,7 +138,15 @@ func (h *Handlers) CallGraph(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	graphResp, err := h.index.BuildCallGraph(symbol, file, depth)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil {
+			limit = l
+		}
+	}
+
+	graphResp, err := h.index.BuildCallGraph(symbol, file, depth, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to build call graph", err.Error())
 		return

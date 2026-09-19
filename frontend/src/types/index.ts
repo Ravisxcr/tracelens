@@ -110,6 +110,7 @@ export interface CallGraphResponse {
   }>;
   counts?: {
     callers?: number;
+    shownCallers?: number;
     callees?: number;
     types?: number;
     vars?: number;

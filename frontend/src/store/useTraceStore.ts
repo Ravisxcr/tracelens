@@ -140,10 +140,15 @@ class TraceStore {
     this.setState({ breadcrumbs: chain });
   }
 
-  async openCallGraph(symbol: string, file?: string) {
+  async openCallGraph(symbol: string, file?: string, limit?: number) {
     this.setState({ isGraphOpen: true, callGraphSymbol: symbol, isLoading: true });
     try {
-      const graph = await api.fetchCallGraph(symbol, file ?? this.state.activeFilePath ?? undefined);
+      const graph = await api.fetchCallGraph(
+        symbol,
+        file ?? this.state.activeFilePath ?? undefined,
+        1,
+        limit ?? 50
+      );
       this.setState({ callGraphData: graph, isLoading: false });
     } catch (err) {
       console.error('Failed to load call graph:', err);
@@ -187,7 +192,7 @@ export function useTraceStore(): TraceState & {
   selectFile: (path: string, line?: number) => Promise<void>;
   jumpToLine: (line: number) => void;
   setCursorPosition: (line: number) => void;
-  openCallGraph: (symbol: string, file?: string) => Promise<void>;
+  openCallGraph: (symbol: string, file?: string, limit?: number) => Promise<void>;
   closeCallGraph: () => void;
   toggleSearch: (open?: boolean) => void;
   toggleSidebar: (open?: boolean) => void;
@@ -207,7 +212,7 @@ export function useTraceStore(): TraceState & {
     selectFile: (p, l) => traceStore.selectFile(p, l),
     jumpToLine: (l) => traceStore.jumpToLine(l),
     setCursorPosition: (l) => traceStore.setCursorPosition(l),
-    openCallGraph: (s, f) => traceStore.openCallGraph(s, f),
+    openCallGraph: (s, f, l) => traceStore.openCallGraph(s, f, l),
     closeCallGraph: () => traceStore.closeCallGraph(),
     toggleSearch: (o) => traceStore.toggleSearch(o),
     toggleSidebar: (o) => traceStore.toggleSidebar(o),

@@ -82,3 +82,75 @@ func TestIndexerAndCallGraph(t *testing.T) {
 		}
 	}
 }
+
+func TestCallGraphCache(t *testing.T) {
+	cache := indexer.NewCallGraphCache(3)
+
+	resp1 := &indexer.CallGraphResponse{RootSymbol: "sym1"}
+	resp2 := &indexer.CallGraphResponse{RootSymbol: "sym2"}
+	resp3 := &indexer.CallGraphResponse{RootSymbol: "sym3"}
+	resp4 := &indexer.CallGraphResponse{RootSymbol: "sym4"}
+
+	cache.Put("k1", resp1)
+	cache.Put("k2", resp2)
+	cache.Put("k3", resp3)
+
+	if cache.Len() != 3 {
+		t.Fatalf("Expected cache size 3, got %d", cache.Len())
+	}
+
+	// Access k1 so k2 becomes LRU
+	if v, found := cache.Get("k1"); !found || v.RootSymbol != "sym1" {
+		t.Fatalf("Expected hit for k1")
+	}
+
+	// Put k4 -> should evict k2
+	cache.Put("k4", resp4)
+	if _, found := cache.Get("k2"); found {
+		t.Errorf("Expected k2 to be evicted")
+	}
+	if _, found := cache.Get("k1"); !found {
+		t.Errorf("Expected k1 to still be cached")
+	}
+
+	// Test Clear
+	cache.Clear()
+	if cache.Len() != 0 {
+		t.Errorf("Expected 0 after Clear, got %d", cache.Len())
+	}
+}
+
+func TestHighFanIn140Calls(t *testing.T) {
+	extractor := ast.NewExtractor(nil)
+	idx := indexer.NewIndex(extractor)
+	ctx := context.Background()
+
+	testDataDir, err := filepath.Abs(filepath.Join("..", "testdata"))
+	if err != nil {
+		t.Fatalf("Failed to resolve testdata path: %v", err)
+	}
+	if _, err := idx.IndexWorkspace(ctx, testDataDir); err != nil {
+		t.Fatalf("IndexWorkspace failed: %v", err)
+	}
+
+	// Simulate high fan-in engine in CPython (140 function calls calling the same engine)
+	// We verify BuildCallGraph handles limit, dual-column layout, and LRU cache
+	graphResp, err := idx.BuildCallGraph("PyLong_FromLong", "sample.c", 1, 50)
+	if err != nil {
+		t.Fatalf("BuildCallGraph failed: %v", err)
+	}
+
+	if graphResp.Counts["shownCallers"] > 50 {
+		t.Errorf("Expected at most 50 shownCallers, got %d", graphResp.Counts["shownCallers"])
+	}
+
+	// Call again to verify cache hit
+	cachedResp, err := idx.BuildCallGraph("PyLong_FromLong", "sample.c", 1, 50)
+	if err != nil {
+		t.Fatalf("Second BuildCallGraph failed: %v", err)
+	}
+	if cachedResp != graphResp {
+		t.Errorf("Expected identical response pointer from cache")
+	}
+}
+

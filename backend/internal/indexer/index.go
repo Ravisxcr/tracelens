@@ -41,6 +41,7 @@ type Index struct {
 	callsByCallee        map[string][]*ast.CallSite
 	typeUsagesBySymbol   map[string][]*ast.TypeUsage
 	varAccessesBySymbol  map[string][]*ast.VarAccess
+	graphCache           *CallGraphCache
 	stats                IndexStats
 }
 
@@ -62,6 +63,7 @@ func NewIndex(extractor *ast.Extractor) *Index {
 		callsByCallee:       make(map[string][]*ast.CallSite),
 		typeUsagesBySymbol:  make(map[string][]*ast.TypeUsage),
 		varAccessesBySymbol: make(map[string][]*ast.VarAccess),
+		graphCache:          NewCallGraphCache(512),
 	}
 }
 
@@ -187,6 +189,9 @@ func (idx *Index) IndexWorkspace(ctx context.Context, rootDir string) (*IndexSta
 	idx.callsByCallee = newCallsByCallee
 	idx.typeUsagesBySymbol = newTypeUsages
 	idx.varAccessesBySymbol = newVarAccesses
+	if idx.graphCache != nil {
+		idx.graphCache.Clear()
+	}
 	idx.stats = IndexStats{
 		TotalFiles:   len(newFileMap),
 		TotalSymbols: totalSymbols,
