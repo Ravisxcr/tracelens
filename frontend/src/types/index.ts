@@ -116,3 +116,27 @@ export interface CallGraphResponse {
     vars?: number;
   };
 }
+
+export interface WatchdogLastChange {
+  files: string[];
+  timestamp: string;
+  durationMs?: number;
+}
+
+export interface WatchdogStatus {
+  enabled: boolean;
+  rootDir: string;
+  watchedFiles: number;
+  intervalMs: number;
+  lastChange?: WatchdogLastChange;
+}
+
+export interface WatchdogEvent {
+  type: 'connected' | 'change' | 'rescan' | 'heartbeat';
+  enabled?: boolean;
+  rootDir?: string;
+  watchedFiles?: number;
+  files?: string[];
+  stats?: IndexStats;
+  timestamp: string;
+}

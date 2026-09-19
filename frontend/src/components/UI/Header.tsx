@@ -30,6 +30,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenShortcuts }) => {
     callGraphSymbol,
     isSidebarOpen,
     toggleSidebar,
+    isWatchdogEnabled,
+    isWatchdogConnected,
+    watchdogSyncing,
+    watchedFilesCount,
+    lastWatchdogChange,
+    triggerRescan,
   } = useTraceStore();
 
   const { theme, resolvedTheme, cycleTheme } = useTheme();
@@ -77,6 +83,50 @@ export const Header: React.FC<HeaderProps> = ({ onOpenShortcuts }) => {
             {stats.totalFiles} files • {stats.totalSymbols} symbols
           </span>
         ) : null}
+
+        {/* Watchdog Status Indicator */}
+        {isWatchdogEnabled && (
+          <button
+            onClick={() => triggerRescan()}
+            disabled={watchdogSyncing}
+            className={`hidden sm:inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium border transition-all cursor-pointer ${
+              watchdogSyncing
+                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800 animate-pulse'
+                : isWatchdogConnected
+                ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/30'
+                : 'bg-slate-100 dark:bg-[#252528] text-slate-500 dark:text-[#888888] border-slate-200 dark:border-[#333333]'
+            }`}
+            title={
+              watchdogSyncing
+                ? 'Watchdog is syncing file changes...'
+                : isWatchdogConnected
+                ? `Watchdog Live: Watching ${watchedFilesCount || stats?.totalFiles || 0} source files.${
+                    lastWatchdogChange ? ` Last updated: ${lastWatchdogChange.files.join(', ')} at ${lastWatchdogChange.timestamp}` : ''
+                  } Click to force rescan.`
+                : 'Watchdog connecting...'
+            }
+          >
+            {watchdogSyncing ? (
+              <>
+                <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-500" />
+                <span>Syncing</span>
+              </>
+            ) : isWatchdogConnected ? (
+              <>
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                <span>Watchdog</span>
+              </>
+            ) : (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                <span>Connecting</span>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Center: Command Palette Trigger */}

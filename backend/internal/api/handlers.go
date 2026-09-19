@@ -2,20 +2,28 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/watchdog"
 )
 
-// Handlers bundles HTTP handler methods with the underlying symbol index.
+// Handlers bundles HTTP handler methods with the underlying symbol index and watchdog.
 type Handlers struct {
-	index *indexer.Index
+	index    *indexer.Index
+	watchdog *watchdog.Watchdog
 }
 
 // NewHandlers creates a new Handlers instance.
-func NewHandlers(index *indexer.Index) *Handlers {
-	return &Handlers{index: index}
+func NewHandlers(index *indexer.Index, wd ...*watchdog.Watchdog) *Handlers {
+	var w *watchdog.Watchdog
+	if len(wd) > 0 {
+		w = wd[0]
+	}
+	return &Handlers{index: index, watchdog: w}
 }
 
 // writeJSON helper writes JSON responses with status code and headers.
@@ -50,6 +58,10 @@ func (h *Handlers) OpenWorkspace(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to index workspace", err.Error())
 		return
+	}
+
+	if h.watchdog != nil {
+		h.watchdog.SetRootDir(req.Path)
 	}
 
 	writeJSON(w, http.StatusOK, OpenWorkspaceResponse{
@@ -178,6 +190,97 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
 		"engine": "tracelens",
+	})
+}
+
+// WatchdogStatus returns the current status and file count of the filesystem watchdog.
+func (h *Handlers) WatchdogStatus(w http.ResponseWriter, r *http.Request) {
+	if h.watchdog == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"enabled": false,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.watchdog.Status())
+}
+
+// WatchdogEvents streams real-time filesystem change notifications using Server-Sent Events (SSE).
+func (h *Handlers) WatchdogEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if h.watchdog == nil {
+		fmt.Fprintf(w, "event: connected\ndata: {\"type\":\"connected\",\"enabled\":false}\n\n")
+		flusher.Flush()
+		return
+	}
+
+	subCh, unsubscribe := h.watchdog.Hub().Subscribe()
+	defer unsubscribe()
+
+	// Send initial connected event
+	status := h.watchdog.Status()
+	stats := h.index.GetStats()
+	initData, _ := json.Marshal(map[string]any{
+		"type":         "connected",
+		"enabled":      status.Enabled,
+		"rootDir":      status.RootDir,
+		"watchedFiles": status.WatchedFiles,
+		"stats":        stats,
+		"timestamp":    time.Now().Format(time.RFC3339),
+	})
+	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", initData)
+	flusher.Flush()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-subCh:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(evt)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Type, data)
+			flusher.Flush()
+		}
+	}
+}
+
+// WatchdogRescan triggers an immediate manual rescan and reindex.
+func (h *Handlers) WatchdogRescan(w http.ResponseWriter, r *http.Request) {
+	if h.watchdog == nil {
+		stats, err := h.index.IndexWorkspace(r.Context(), ".")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to rescan workspace", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"stats": stats,
+		})
+		return
+	}
+
+	stats, err := h.watchdog.Rescan(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to rescan workspace", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"stats": stats,
 	})
 }
 

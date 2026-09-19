@@ -40,3 +40,8 @@ type ErrorResponse struct {
 	Details string `json:"details,omitempty"`
 }
 
+// WatchdogRescanResponse payload.
+type WatchdogRescanResponse struct {
+	Stats indexer.IndexStats `json:"stats"`
+}
+

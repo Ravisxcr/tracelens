@@ -3,17 +3,20 @@ package api_test
 import (
 	"bytes"
 	"encoding/json"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"tracelens/backend/internal/api"
 	"tracelens/backend/internal/ast"
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/watchdog"
 )
 
-func setupTestServer(t *testing.T) *httptest.Server {
+func setupTestServer(t *testing.T) (*httptest.Server, *watchdog.Watchdog) {
 	testDataDir, err := filepath.Abs(filepath.Join("..", "testdata"))
 	if err != nil {
 		t.Fatalf("Failed to resolve testdata: %v", err)
@@ -21,8 +24,14 @@ func setupTestServer(t *testing.T) *httptest.Server {
 
 	extractor := ast.NewExtractor(nil)
 	idx := indexer.NewIndex(extractor)
-	router := api.NewRouter(idx)
+	wd := watchdog.NewWatchdog(watchdog.Config{
+		RootDir:  testDataDir,
+		Interval: 50 * time.Millisecond,
+		Debounce: 50 * time.Millisecond,
+	}, idx)
+	_ = wd.Start(context.Background())
 
+	router := api.NewRouter(idx, wd)
 	ts := httptest.NewServer(router)
 
 	// Open workspace
@@ -32,12 +41,13 @@ func setupTestServer(t *testing.T) *httptest.Server {
 		t.Fatalf("Failed to open workspace: %v, status: %d", err, res.StatusCode)
 	}
 
-	return ts
+	return ts, wd
 }
 
 func TestAPIEndpoints(t *testing.T) {
-	ts := setupTestServer(t)
+	ts, wd := setupTestServer(t)
 	defer ts.Close()
+	defer wd.Stop()
 
 	// 1. Health check
 	resp, err := http.Get(ts.URL + "/api/health")
@@ -85,6 +95,23 @@ func TestAPIEndpoints(t *testing.T) {
 	resp, err = http.Get(ts.URL + "/api/symbols/search?q=Greet")
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("Symbol search endpoint failed: %v", err)
+	}
+
+	// 8. Watchdog Status
+	resp, err = http.Get(ts.URL + "/api/watchdog/status")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("Watchdog status endpoint failed: %v", err)
+	}
+	var status watchdog.WatchdogStatus
+	_ = json.NewDecoder(resp.Body).Decode(&status)
+	if !status.Enabled {
+		t.Errorf("Expected watchdog status to be enabled")
+	}
+
+	// 9. Watchdog Rescan
+	resp, err = http.Post(ts.URL+"/api/watchdog/rescan", "application/json", nil)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("Watchdog rescan endpoint failed: %v", err)
 	}
 }
 

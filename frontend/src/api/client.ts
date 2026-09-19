@@ -1,4 +1,4 @@
-import { CallGraphResponse, FileContentResponse, IndexStats, SymbolInfo, TreeNode } from '../types';
+import { CallGraphResponse, FileContentResponse, IndexStats, SymbolInfo, TreeNode, WatchdogStatus } from '../types';
 
 const API_BASE = '/api';
 
@@ -92,3 +92,19 @@ export async function openWorkspace(path: string): Promise<{ path: string; stats
   if (!res.ok) throw new Error(`Failed to open workspace: ${res.statusText}`);
   return res.json();
 }
+
+export async function fetchWatchdogStatus(): Promise<WatchdogStatus> {
+  const res = await fetch(`${API_BASE}/watchdog/status`);
+  if (!res.ok) throw new Error(`Failed to fetch watchdog status: ${res.statusText}`);
+  return res.json();
+}
+
+export async function triggerWatchdogRescan(): Promise<{ stats: IndexStats }> {
+  clearCallGraphCache();
+  const res = await fetch(`${API_BASE}/watchdog/rescan`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to trigger watchdog rescan: ${res.statusText}`);
+  return res.json();
+}
+

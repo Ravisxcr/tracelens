@@ -8,11 +8,12 @@ import (
 	"github.com/go-chi/cors"
 
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/watchdog"
 	"tracelens/backend/internal/web"
 )
 
 // NewRouter sets up the Chi router with middleware, API endpoints, and embedded web UI.
-func NewRouter(index *indexer.Index) http.Handler {
+func NewRouter(index *indexer.Index, wd ...*watchdog.Watchdog) http.Handler {
 	r := chi.NewRouter()
 
 	// Base middleware
@@ -31,7 +32,7 @@ func NewRouter(index *indexer.Index) http.Handler {
 		MaxAge:           300,
 	}))
 
-	h := NewHandlers(index)
+	h := NewHandlers(index, wd...)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", h.Health)
@@ -46,6 +47,11 @@ func NewRouter(index *indexer.Index) http.Handler {
 		api.Get("/references", h.FindReferences)
 		api.Get("/callgraph", h.CallGraph)
 		api.Get("/symbols/search", h.SearchSymbols)
+
+		// Watchdog routes
+		api.Get("/watchdog/status", h.WatchdogStatus)
+		api.Get("/watchdog/events", h.WatchdogEvents)
+		api.Post("/watchdog/rescan", h.WatchdogRescan)
 	})
 
 	// Serve embedded single-page application for all other routes

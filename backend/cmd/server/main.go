@@ -17,6 +17,7 @@ import (
 	"tracelens/backend/internal/api"
 	"tracelens/backend/internal/ast"
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/watchdog"
 )
 
 func main() {
@@ -35,6 +36,8 @@ func main() {
 	port := flag.Int("port", 8080, "HTTP server port to listen on")
 	dirFlag := flag.String("dir", "", "Target directory path to scan and index")
 	noBrowser := flag.Bool("no-browser", false, "Do not automatically launch web browser")
+	watch := flag.Bool("watch", true, "Enable live filesystem watchdog (auto-reindex on change)")
+	watchInterval := flag.Duration("watch-interval", 1000*time.Millisecond, "Filesystem watchdog polling interval")
 	flag.Parse()
 
 	// Resolve target directory from positional arg first, then -dir flag, defaulting to "."
@@ -76,7 +79,23 @@ func main() {
 			stats.TotalFiles, stats.TotalSymbols, stats.TotalCalls, stats.Duration.Round(time.Millisecond))
 	}
 
-	router := api.NewRouter(idx)
+	var wd *watchdog.Watchdog
+	if *watch {
+		wd = watchdog.NewWatchdog(watchdog.Config{
+			RootDir:  absDir,
+			Interval: *watchInterval,
+			Debounce: 300 * time.Millisecond,
+		}, idx)
+		if err := wd.Start(context.Background()); err != nil {
+			fmt.Printf("  Watchdog Warning : Failed to start watchdog: %v\n", err)
+		} else {
+			fmt.Printf("  Watchdog         : Active (auto-reindex on change, interval: %v)\n", *watchInterval)
+		}
+	} else {
+		fmt.Println("  Watchdog         : Disabled")
+	}
+
+	router := api.NewRouter(idx, wd)
 	serverAddr := fmt.Sprintf(":%d", *port)
 	srv := &http.Server{
 		Addr:         serverAddr,
@@ -112,6 +131,9 @@ func main() {
 	<-stop
 
 	fmt.Println("\nShutting down TraceLens server...")
+	if wd != nil {
+		wd.Stop()
+	}
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer shutdownCancel()
 

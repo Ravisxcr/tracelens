@@ -24,8 +24,11 @@ This builds `bin/tlens` with the embedded production web application.
 
 # Specify custom port
 ./bin/tlens -port 3000 my-project
+
+# Run with custom watchdog polling interval (or disable with -watch=false)
+./bin/tlens -watch=true -watch-interval 500ms .
 ```
-TraceLens will index the codebase and automatically open your default browser to `http://localhost:8080`.
+TraceLens will index the codebase, start the live filesystem watchdog, and automatically open your default browser to `http://localhost:8080`.
 
 ### 3. Install globally to PATH
 ```bash
@@ -40,6 +43,7 @@ tlens .
 
 ## Features
 
+- **Live Filesystem Watchdog**: Continuously monitors the target workspace for code changes, additions, and deletions with debounced reindexing and real-time Server-Sent Events (SSE) synchronization to the web UI.
 - **Single Self-Contained Binary**: Zero external runtime dependencies. Frontend HTML/JS/CSS assets are embedded directly into the executable via Go `//go:embed`.
 - **Positional Folder Syntax**: Pass `.` or any directory path as the first positional argument (`tlens .`, `tlens ../cpython`).
 - **CPython C & Python AST Support**: Parses C/C++ structs, typedefs, enums, macros (`#define`), global type descriptors (`PyTypeObject`), Python classes, methods, and type annotations.

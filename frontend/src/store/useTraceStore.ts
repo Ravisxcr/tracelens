@@ -25,6 +25,11 @@ export interface TraceState {
   cursorCol: number;
   breadcrumbs: string[];
   isLoading: boolean;
+  isWatchdogEnabled: boolean;
+  isWatchdogConnected: boolean;
+  watchdogSyncing: boolean;
+  watchedFilesCount: number;
+  lastWatchdogChange: { files: string[]; timestamp: string } | null;
 }
 
 type Listener = () => void;
@@ -51,8 +56,15 @@ class TraceStore {
     cursorCol: 1,
     breadcrumbs: [],
     isLoading: false,
+    isWatchdogEnabled: true,
+    isWatchdogConnected: false,
+    watchdogSyncing: false,
+    watchedFilesCount: 0,
+    lastWatchdogChange: null,
   };
 
+  private eventSource: EventSource | null = null;
+  private watchdogDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<Listener>();
 
   getState(): TraceState {
@@ -96,20 +108,152 @@ class TraceStore {
     this.setState({ isGraphFullScreen: next, isGraphOpen: true });
   }
 
-  async loadWorkspace() {
-    this.setState({ isLoading: true });
+  async loadWorkspace(autoOpenFile: boolean = true) {
+    this.initWatchdog();
+    if (autoOpenFile) {
+      this.setState({ isLoading: true });
+    }
     try {
       const data = await api.fetchTree();
-      this.setState({ tree: data.tree, stats: data.stats, isLoading: false });
+      this.setState({
+        tree: data.tree,
+        stats: data.stats,
+        watchedFilesCount: data.stats.totalFiles,
+        isLoading: false,
+      });
 
-      // Automatically open the first source file if available
-      const firstFile = this.findFirstFile(data.tree);
-      if (firstFile) {
-        await this.selectFile(firstFile);
+      // Automatically open the first source file if available and none is currently open
+      if (autoOpenFile && !this.state.activeFilePath) {
+        const firstFile = this.findFirstFile(data.tree);
+        if (firstFile) {
+          await this.selectFile(firstFile);
+        }
       }
     } catch (err) {
       console.error('Failed to load workspace:', err);
       this.setState({ isLoading: false });
+    }
+  }
+
+  initWatchdog() {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+    if (this.eventSource) {
+      return; // Already initialized
+    }
+
+    try {
+      const es = new EventSource('/api/watchdog/events');
+      this.eventSource = es;
+
+      es.addEventListener('connected', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          this.setState({
+            isWatchdogConnected: true,
+            isWatchdogEnabled: payload.enabled ?? true,
+            watchedFilesCount: payload.watchedFiles ?? (this.state.stats?.totalFiles || 0),
+          });
+        } catch {}
+      });
+
+      es.addEventListener('change', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          this.handleWatchdogChange(payload.files, payload.stats);
+        } catch {}
+      });
+
+      es.addEventListener('rescan', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          this.handleWatchdogChange(['*'], payload.stats);
+        } catch {}
+      });
+
+      es.addEventListener('heartbeat', () => {
+        if (!this.state.isWatchdogConnected) {
+          this.setState({ isWatchdogConnected: true });
+        }
+      });
+
+      es.onerror = () => {
+        this.setState({ isWatchdogConnected: false });
+      };
+    } catch (err) {
+      console.error('Watchdog initialization error:', err);
+    }
+  }
+
+  async handleWatchdogChange(files?: string[], newStats?: IndexStats) {
+    api.clearCallGraphCache();
+    const changedFiles = files || [];
+    this.setState({
+      watchdogSyncing: true,
+      lastWatchdogChange: {
+        files: changedFiles,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    });
+
+    try {
+      const treeData = await api.fetchTree();
+      this.setState({
+        tree: treeData.tree,
+        stats: newStats || treeData.stats,
+        watchedFilesCount: treeData.stats.totalFiles,
+      });
+
+      // Silently reload active file if it was changed
+      if (this.state.activeFilePath) {
+        const currentPath = this.state.activeFilePath;
+        const isCurrentModified =
+          changedFiles.includes('*') ||
+          changedFiles.includes(currentPath) ||
+          changedFiles.some((f) => currentPath.endsWith(f));
+
+        if (isCurrentModified) {
+          try {
+            const updatedFile = await api.fetchFile(currentPath);
+            this.setState({ activeFile: updatedFile });
+            this.updateBreadcrumbs(this.state.cursorLine, updatedFile.symbols);
+          } catch (err) {
+            console.error('Failed to reload changed file:', err);
+          }
+        }
+      }
+
+      // Refresh call graph if currently open
+      if (this.state.isGraphOpen && this.state.callGraphSymbol) {
+        try {
+          const graph = await api.fetchCallGraph(
+            this.state.callGraphSymbol,
+            this.state.activeFilePath ?? undefined,
+            1,
+            50
+          );
+          this.setState({ callGraphData: graph });
+        } catch (err) {
+          console.error('Failed to refresh call graph on change:', err);
+        }
+      }
+    } finally {
+      if (this.watchdogDebounceTimer) {
+        clearTimeout(this.watchdogDebounceTimer);
+      }
+      this.watchdogDebounceTimer = setTimeout(() => {
+        this.setState({ watchdogSyncing: false });
+      }, 700);
+    }
+  }
+
+  async triggerRescan() {
+    this.setState({ watchdogSyncing: true });
+    try {
+      await api.triggerWatchdogRescan();
+      await this.handleWatchdogChange(['*']);
+    } catch (err) {
+      console.error('Failed to trigger rescan:', err);
+      this.setState({ watchdogSyncing: false });
     }
   }
 
@@ -274,6 +418,8 @@ export function useTraceStore(): TraceState & {
   saveGraphWidth: (width: number) => void;
   toggleGraphFullScreen: (fullscreen?: boolean) => void;
   jumpToDefinition: (name: string, file?: string, line?: number, col?: number) => Promise<void>;
+  triggerRescan: () => Promise<void>;
+  initWatchdog: () => void;
 } {
   const [state, setState] = useState<TraceState>(traceStore.getState());
 
@@ -301,5 +447,8 @@ export function useTraceStore(): TraceState & {
     saveGraphWidth: (w) => traceStore.saveGraphWidth(w),
     toggleGraphFullScreen: (f) => traceStore.toggleGraphFullScreen(f),
     jumpToDefinition: (n, f, l, c) => traceStore.jumpToDefinition(n, f, l, c),
+    triggerRescan: () => traceStore.triggerRescan(),
+    initWatchdog: () => traceStore.initWatchdog(),
   };
 }
+
