@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Test & Build Standalone Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: backend/go.sum
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Type-check Frontend (TypeScript)
+        run: npx tsc --noEmit
+        working-directory: frontend
+
+      - name: Run Backend Tests
+        run: go test -v ./...
+        working-directory: backend
+
+      - name: Run Backend Vet
+        run: go vet ./...
+        working-directory: backend
+
+      - name: Build Standalone Single Binary
+        run: make build
+
+      - name: Verify Binary Version Matches VERSION file
+        run: |
+          EXPECTED_VER=$(cat VERSION | tr -d '[:space:]')
+          ACTUAL_VER=$(./bin/tlens -version)
+          echo "Expected version: $EXPECTED_VER"
+          echo "Actual output:    $ACTUAL_VER"
+          if [[ "$ACTUAL_VER" != *"$EXPECTED_VER"* ]]; then
+            echo "ERROR: Version mismatch between VERSION file ($EXPECTED_VER) and binary output ($ACTUAL_VER)"
+            exit 1
+          fi
+          echo "Binary version check passed!"
+

@@ -17,6 +17,7 @@ import (
 	"tracelens/backend/internal/api"
 	"tracelens/backend/internal/ast"
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/version"
 	"tracelens/backend/internal/watchdog"
 )
 
@@ -28,7 +29,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  tlens .                 # Open current directory\n")
 		fmt.Fprintf(os.Stderr, "  tlens /path/to/cpython  # Open target project\n")
-		fmt.Fprintf(os.Stderr, "  tlens -port 3000 .      # Specify custom port\n\n")
+		fmt.Fprintf(os.Stderr, "  tlens -port 3000 .      # Specify custom port\n")
+		fmt.Fprintf(os.Stderr, "  tlens -version          # Print version information\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
@@ -38,7 +40,14 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "Do not automatically launch web browser")
 	watch := flag.Bool("watch", true, "Enable live filesystem watchdog (auto-reindex on change)")
 	watchInterval := flag.Duration("watch-interval", 1000*time.Millisecond, "Filesystem watchdog polling interval")
+	versionFlag := flag.Bool("version", false, "Print TraceLens version and exit")
+	vFlag := flag.Bool("v", false, "Print TraceLens version and exit (shorthand)")
 	flag.Parse()
+
+	if *versionFlag || *vFlag {
+		fmt.Println(version.Info())
+		os.Exit(0)
+	}
 
 	// Resolve target directory from positional arg first, then -dir flag, defaulting to "."
 	targetPath := "."
@@ -59,7 +68,7 @@ func main() {
 	}
 
 	fmt.Println("==============================================================================")
-	fmt.Println("  TraceLens (tlens) — Read-Only Code Exploration & Call Graph Engine         ")
+	fmt.Printf("  TraceLens (tlens) v%-8s — Read-Only Code Exploration & Call Graph Engine\n", version.Version)
 	fmt.Println("==============================================================================")
 	fmt.Printf("  Target Workspace : %s\n", absDir)
 

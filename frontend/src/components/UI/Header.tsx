@@ -39,6 +39,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenShortcuts }) => {
   } = useTraceStore();
 
   const { theme, resolvedTheme, cycleTheme } = useTheme();
+  const [appVersion, setAppVersion] = React.useState<string>('0.1.0');
+
+  React.useEffect(() => {
+    fetch('/api/version')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.version) {
+          setAppVersion(data.version);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleToggleGraph = () => {
     if (isGraphOpen) {
@@ -70,6 +82,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenShortcuts }) => {
             <Network className="w-3 h-3" />
           </div>
           <span>TraceLens</span>
+          <span className="text-[10px] font-mono font-normal text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-[#28282c] px-1.5 py-0.2 rounded border border-slate-300/40 dark:border-[#38383c]">
+            v{appVersion}
+          </span>
         </div>
 
         {/* Indexing / Stats pill */}

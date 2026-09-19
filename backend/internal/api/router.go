@@ -36,6 +36,7 @@ func NewRouter(index *indexer.Index, wd ...*watchdog.Watchdog) http.Handler {
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", h.Health)
+		api.Get("/version", h.Version)
 
 		// Workspace routes
 		api.Post("/workspace/open", h.OpenWorkspace)

@@ -55,6 +55,16 @@ func TestAPIEndpoints(t *testing.T) {
 		t.Fatalf("Health check failed: %v", err)
 	}
 
+	// 1b. Version check
+	resp, err = http.Get(ts.URL + "/api/version")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("Version check failed: %v", err)
+	}
+	var verInfo map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&verInfo); err != nil || verInfo["version"] == "" {
+		t.Fatalf("Invalid version response: %v, got %v", err, verInfo)
+	}
+
 	// 2. Tree check
 	resp, err = http.Get(ts.URL + "/api/workspace/tree")
 	if err != nil || resp.StatusCode != http.StatusOK {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/version"
 	"tracelens/backend/internal/watchdog"
 )
 
@@ -185,11 +186,21 @@ func (h *Handlers) SearchSymbols(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Health returns basic server health status.
+// Health returns basic server health status and version.
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "ok",
-		"engine": "tracelens",
+		"status":  "ok",
+		"engine":  "tracelens",
+		"version": version.Version,
+	})
+}
+
+// Version returns detailed application version and build metadata.
+func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version":   version.Version,
+		"gitCommit": version.GitCommit,
+		"buildDate": version.BuildDate,
 	})
 }
 
