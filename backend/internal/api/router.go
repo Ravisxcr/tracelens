@@ -8,9 +8,10 @@ import (
 	"github.com/go-chi/cors"
 
 	"tracelens/backend/internal/indexer"
+	"tracelens/backend/internal/web"
 )
 
-// NewRouter sets up the Chi router with middleware and endpoints.
+// NewRouter sets up the Chi router with middleware, API endpoints, and embedded web UI.
 func NewRouter(index *indexer.Index) http.Handler {
 	r := chi.NewRouter()
 
@@ -47,6 +48,9 @@ func NewRouter(index *indexer.Index) http.Handler {
 		api.Get("/symbols/search", h.SearchSymbols)
 	})
 
+	// Serve embedded single-page application for all other routes
+	webHandler := web.Handler()
+	r.Get("/*", webHandler.ServeHTTP)
+
 	return r
 }
-

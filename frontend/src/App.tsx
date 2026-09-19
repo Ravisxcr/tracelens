@@ -14,7 +14,7 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#181818] text-[#cccccc]">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-white dark:bg-[#181818] text-slate-800 dark:text-[#cccccc] transition-colors">
       {/* Top Navigation Bar */}
       <Header />
 
@@ -35,8 +35,8 @@ export const App: React.FC = () => {
 
       {/* Background loading spinner overlay */}
       {isLoading && (
-        <div className="fixed bottom-3 right-3 bg-[#252528]/90 backdrop-blur-xs border border-[#3e3e42] px-3 py-1.5 rounded-md shadow-lg text-[11px] text-[#aaaaaa] flex items-center space-x-2 z-50 pointer-events-none">
-          <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        <div className="fixed bottom-3 right-3 bg-white/95 dark:bg-[#252528]/95 backdrop-blur-xs border border-slate-200 dark:border-[#3e3e42] px-2.5 py-1 rounded-md shadow-lg text-[10.5px] text-slate-700 dark:text-[#aaaaaa] flex items-center space-x-2 z-50 pointer-events-none">
+          <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <span>Indexing / Tracing...</span>
         </div>
       )}
@@ -45,4 +45,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

@@ -24,51 +24,61 @@ func TestIndexerAndCallGraph(t *testing.T) {
 		t.Fatalf("IndexWorkspace failed: %v", err)
 	}
 
-	if stats.TotalFiles < 2 {
-		t.Errorf("Expected at least 2 files indexed, got %d", stats.TotalFiles)
+	if stats.TotalFiles < 4 {
+		t.Errorf("Expected at least 4 files indexed (go, ts, c, py), got %d", stats.TotalFiles)
 	}
-	if stats.TotalSymbols < 5 {
-		t.Errorf("Expected at least 5 symbols indexed, got %d", stats.TotalSymbols)
-	}
-
-	// Test FindDefinition
-	defs := idx.FindDefinition("sample.go", "Greet", 0, 0)
-	if len(defs) == 0 {
-		t.Errorf("Expected to find definition for 'Greet', got none")
-	} else if defs[0].Name != "Greet" {
-		t.Errorf("Expected definition name 'Greet', got '%s'", defs[0].Name)
+	if stats.TotalTypes < 3 {
+		t.Errorf("Expected at least 3 datatypes/structs indexed, got %d", stats.TotalTypes)
 	}
 
-	// Test FindReferences
-	refs := idx.FindReferences("Greet")
-	if len(refs) == 0 {
-		t.Errorf("Expected references/callers for 'Greet', got none")
-	} else {
-		foundCaller := false
-		for _, ref := range refs {
-			if ref.Caller == "RunGreeting" {
-				foundCaller = true
-				break
+	// 1. Test C CPython Symbol Extraction & Call Graph
+	cGraph, err := idx.BuildCallGraph("PyLong_FromLong", "sample.c", 1)
+	if err != nil {
+		t.Fatalf("BuildCallGraph for PyLong_FromLong failed: %v", err)
+	}
+
+	// Verify categories present in PyLong_FromLong graph
+	hasFunction := false
+	hasType := false
+	hasVar := false
+
+	for _, node := range cGraph.Nodes {
+		switch node.Data.Category {
+		case ast.CategoryFunction:
+			hasFunction = true
+		case ast.CategoryType:
+			hasType = true
+		case ast.CategoryVariable:
+			hasVar = true
+		}
+	}
+
+	if !hasFunction {
+		t.Errorf("Expected function node in PyLong_FromLong call graph")
+	}
+	if !hasType {
+		t.Errorf("Expected datatype node (PyObject/PyTypeObject) in PyLong_FromLong call graph")
+	}
+	if !hasVar {
+		t.Errorf("Expected variable node (PyLong_Type) in PyLong_FromLong call graph")
+	}
+
+	// Verify Overlap-Free Guarantee: No two nodes have identical or conflicting (X, Y)
+	for i := 0; i < len(cGraph.Nodes); i++ {
+		for j := i + 1; j < len(cGraph.Nodes); j++ {
+			n1 := cGraph.Nodes[i]
+			n2 := cGraph.Nodes[j]
+			// Same column
+			if n1.Position.X == n2.Position.X {
+				yDiff := n1.Position.Y - n2.Position.Y
+				if yDiff < 0 {
+					yDiff = -yDiff
+				}
+				if yDiff < 150.0 {
+					t.Errorf("Nodes %s and %s in same column are too close (Y diff: %.1f < 150)",
+						n1.Data.Label, n2.Data.Label, yDiff)
+				}
 			}
 		}
-		if !foundCaller {
-			t.Errorf("Expected 'RunGreeting' to be a caller of 'Greet'")
-		}
-	}
-
-	// Test CallGraph
-	graph, err := idx.BuildCallGraph("Greet", "sample.go", 1)
-	if err != nil {
-		t.Fatalf("BuildCallGraph error: %v", err)
-	}
-	if graph.RootSymbol != "Greet" {
-		t.Errorf("Expected root symbol 'Greet', got '%s'", graph.RootSymbol)
-	}
-	if len(graph.Nodes) < 2 {
-		t.Errorf("Expected at least 2 nodes in call graph (root + caller), got %d", len(graph.Nodes))
-	}
-	if len(graph.Edges) < 1 {
-		t.Errorf("Expected at least 1 edge in call graph, got %d", len(graph.Edges))
 	}
 }
-

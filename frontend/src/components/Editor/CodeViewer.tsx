@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import Editor, { Monaco, OnMount } from '@monaco-editor/react';
 import type * as monacoEditor from 'monaco-editor';
 import { useTraceStore, traceStore } from '../../store/useTraceStore';
+import { useTheme } from '../../store/useTheme';
 import { Breadcrumbs } from './Breadcrumbs';
 
 export const CodeViewer: React.FC = () => {
@@ -12,6 +13,8 @@ export const CodeViewer: React.FC = () => {
     jumpToDefinition,
     openCallGraph,
   } = useTraceStore();
+
+  const { resolvedTheme } = useTheme();
 
   const editorRef = useRef<monacoEditor.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -43,8 +46,8 @@ export const CodeViewer: React.FC = () => {
       openCallGraph(symbol, file);
     });
 
-    // Register Hover Provider for Go and TypeScript/JavaScript
-    const languages = ['go', 'typescript', 'javascript'];
+    // Register Hover Provider for Go, TS/JS, C, C++, Python
+    const languages = ['go', 'typescript', 'javascript', 'c', 'cpp', 'python'];
     languages.forEach((lang) => {
       monaco.languages.registerHoverProvider(lang, {
         provideHover: (model, position) => {
@@ -121,11 +124,11 @@ export const CodeViewer: React.FC = () => {
 
   if (!activeFile) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[#1e1e1e] text-[#666666] select-none">
+      <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-[#1e1e1e] text-slate-500 dark:text-[#666666] select-none">
         <div className="text-center space-y-2">
-          <p className="text-sm">Select a file from the explorer to begin tracing</p>
-          <p className="text-xs text-[#555555]">
-            Use <kbd className="bg-[#2a2a2b] px-1.5 py-0.5 rounded text-[#888888] border border-[#3e3e42]">⌘P</kbd> to search symbols
+          <p className="text-sm font-medium">Select a file from the explorer to begin tracing</p>
+          <p className="text-xs text-slate-400 dark:text-[#555555]">
+            Use <kbd className="bg-white dark:bg-[#2a2a2b] px-1.5 py-0.5 rounded text-slate-500 dark:text-[#888888] border border-slate-200 dark:border-[#3e3e42]">⌘P</kbd> to search symbols
           </p>
         </div>
       </div>
@@ -141,19 +144,25 @@ export const CodeViewer: React.FC = () => {
         return 'typescript';
       case 'javascript':
         return 'javascript';
+      case 'c':
+        return 'c';
+      case 'cpp':
+        return 'cpp';
+      case 'python':
+        return 'python';
       default:
         return 'plaintext';
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#1e1e1e] overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#1e1e1e] overflow-hidden transition-colors">
       <Breadcrumbs />
 
       <div className="flex-1 relative">
         <Editor
           height="100%"
-          theme="vs-dark"
+          theme={resolvedTheme === 'dark' ? 'vs-dark' : 'vs'}
           language={getMonacoLanguage(activeFile.language)}
           value={activeFile.content}
           onMount={handleEditorDidMount}

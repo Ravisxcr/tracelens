@@ -36,6 +36,7 @@ dist-ssr/
 frontend/dist-ssr/
 .vite/
 frontend/.vite/
+backend/internal/web/dist/assets/
 
 # NPM / Yarn / PNPM logs
 npm-debug.log*

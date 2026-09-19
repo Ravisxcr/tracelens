@@ -3,12 +3,21 @@ export type SymbolKind =
   | 'method'
   | 'type'
   | 'struct'
+  | 'typedef'
+  | 'union'
+  | 'enum'
   | 'interface'
   | 'class'
   | 'variable'
   | 'constant'
+  | 'macro'
+  | 'field'
+  | 'namespace'
+  | 'module'
   | 'import'
   | 'call';
+
+export type SymbolCategory = 'function' | 'type' | 'variable' | 'other';
 
 export interface Position {
   line: number;
@@ -25,6 +34,7 @@ export interface SymbolInfo {
   id: string;
   name: string;
   kind: SymbolKind;
+  category?: SymbolCategory;
   file: string;
   range: Range;
   scope?: string;
@@ -63,6 +73,8 @@ export interface IndexStats {
   totalFiles: number;
   totalSymbols: number;
   totalCalls: number;
+  totalTypes?: number;
+  totalVars?: number;
   duration: number;
   indexedAt: string;
 }
@@ -70,6 +82,7 @@ export interface IndexStats {
 export interface CallGraphNodeData {
   label: string;
   kind: SymbolKind;
+  category: SymbolCategory;
   file: string;
   line: number;
   signature?: string;
@@ -91,8 +104,14 @@ export interface CallGraphResponse {
     id: string;
     source: string;
     target: string;
+    relationship?: 'call' | 'type' | 'variable';
     label?: string;
     animated?: boolean;
   }>;
+  counts?: {
+    callers?: number;
+    callees?: number;
+    types?: number;
+    vars?: number;
+  };
 }
-

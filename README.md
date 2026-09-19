@@ -1,51 +1,67 @@
-# TraceLens
+# TraceLens (`tlens`)
 
-**TraceLens** is a lightweight, read-only code exploration tool designed for rapid code comprehension, call graphs, and fast symbol tracing without the overhead of editing or full language server protocol (LSP) setups.
+**TraceLens** is an ultra-fast, read-only code exploration tool and execution graph engine designed for instant code comprehension, call graphs, and symbol tracing across **C**, **C++**, **Python** (optimized for **CPython**), **Go**, and **TypeScript/JavaScript** codebases.
 
-## Tech Stack
+Distributed as a **single self-contained binary** with the frontend UI fully embedded.
 
-- **Backend**: Go (Chi router, Tree-sitter bindings via `smacker/go-tree-sitter`)
-- **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, Monaco Editor (read-only mode), and React Flow (`@xyflow/react`)
+---
+
+## Quick Start (Single Binary)
+
+### 1. Build the standalone binary
+```bash
+make build
+```
+This builds `bin/tlens` with the embedded production web application.
+
+### 2. Run anywhere
+```bash
+# Explore the current folder
+./bin/tlens .
+
+# Explore a target project or repo
+./bin/tlens /path/to/cpython
+
+# Specify custom port
+./bin/tlens -port 3000 my-project
+```
+TraceLens will index the codebase and automatically open your default browser to `http://localhost:8080`.
+
+### 3. Install globally to PATH
+```bash
+make install-bin
+```
+Then simply run:
+```bash
+tlens .
+```
 
 ---
 
 ## Features
 
-- **Fast Recursive AST Scanner**: Indexes Go, TypeScript, and JavaScript source files using Tree-sitter.
-- **In-Memory Symbol & Call Inverted Index**: Instant $O(1)$ symbol definition lookups and caller/callee resolutions.
-- **Read-Only Monaco Viewer**:
-  - Pinned sticky scroll (`stickyScroll: { enabled: true }`)
-  - Live breadcrumbs tracking cursor scope (`path > struct > method`)
-  - Hover provider with "Jump to Definition" and "Trace Call Graph"
-  - Pulse highlight decoration on definition jumps
-- **Interactive Call Graph Panel**:
-  - Powered by `@xyflow/react`
-  - Automatic horizontal layered layout (incoming callers $\rightarrow$ target symbol $\rightarrow$ outgoing callees)
-  - "Jump to Code" and "Trace" buttons on every graph node
-- **Global Quick Symbol Search**: `⌘P` / `Ctrl+P` modal with keyboard navigation.
+- **Single Self-Contained Binary**: Zero external runtime dependencies. Frontend HTML/JS/CSS assets are embedded directly into the executable via Go `//go:embed`.
+- **Positional Folder Syntax**: Pass `.` or any directory path as the first positional argument (`tlens .`, `tlens ../cpython`).
+- **CPython C & Python AST Support**: Parses C/C++ structs, typedefs, enums, macros (`#define`), global type descriptors (`PyTypeObject`), Python classes, methods, and type annotations.
+- **Overlap-Free 5-Column Graph Engine**:
+  - Differentiates **Control Flow** (`calls`), **Datatypes & Structs** (`uses_type`), and **Variables & Objects** (`accesses_var`).
+  - Strict horizontal column tracks and vertical clearance guarantees zero card overlap.
+- **Interactive Graph Filtering**: Filter chips to toggle Functions, Datatypes, or Variables on/off in real-time.
+- **Collapsible Sidebar**: Toggle with `⌘B` / `Ctrl+B` or the navbar button to expand Monaco and the Graph canvas to full screen.
+- **Ultra-Compact Space-Efficient Navbar**: Reclaims vertical space for code reading.
+- **Light, Dark & System Themes**: High-contrast theme cycler compatible with Monaco and React Flow.
 
 ---
 
-## Quick Start
-
-### 1. Backend
+## Development
 
 ```bash
-cd backend
-go run ./cmd/server/main.go -port 8080 -dir ..
+# View all available make targets
+make help
+
+# Run test suite
+make test
+
+# Start fullstack dev server (Go backend + Vite hot-reload)
+make dev
 ```
-
-Run test suite:
-```bash
-go test -v ./...
-```
-
-### 2. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Visit `http://localhost:5173` to explore your codebase.

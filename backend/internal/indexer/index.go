@@ -17,25 +17,31 @@ type IndexStats struct {
 	TotalFiles   int           `json:"totalFiles"`
 	TotalSymbols int           `json:"totalSymbols"`
 	TotalCalls   int           `json:"totalCalls"`
+	TotalTypes   int           `json:"totalTypes"`
+	TotalVars    int           `json:"totalVars"`
 	Duration     time.Duration `json:"duration"`
 	IndexedAt    time.Time     `json:"indexedAt"`
 }
 
-// Index maintains in-memory symbol tables and call graphs for fast lookups.
+// Index maintains in-memory symbol tables, call graphs, type graphs, and variable references.
 type Index struct {
-	mu            sync.RWMutex
-	rootDir       string
-	scanner       *Scanner
-	extractor     *ast.Extractor
-	tree          *TreeNode
-	fileList      []FileInfo
-	fileMap       map[string]FileInfo
-	fileASTs      map[string]*ast.FileAST
-	defsByName    map[string][]*ast.Symbol
-	defsByFile    map[string][]*ast.Symbol
-	callsByCaller map[string][]*ast.CallSite
-	callsByCallee map[string][]*ast.CallSite
-	stats         IndexStats
+	mu                   sync.RWMutex
+	rootDir              string
+	scanner              *Scanner
+	extractor            *ast.Extractor
+	tree                 *TreeNode
+	fileList             []FileInfo
+	fileMap              map[string]FileInfo
+	fileASTs             map[string]*ast.FileAST
+	defsByName           map[string][]*ast.Symbol
+	typesByName          map[string][]*ast.Symbol
+	varsByName           map[string][]*ast.Symbol
+	defsByFile           map[string][]*ast.Symbol
+	callsByCaller        map[string][]*ast.CallSite
+	callsByCallee        map[string][]*ast.CallSite
+	typeUsagesBySymbol   map[string][]*ast.TypeUsage
+	varAccessesBySymbol  map[string][]*ast.VarAccess
+	stats                IndexStats
 }
 
 // NewIndex initializes an empty Index.
@@ -44,14 +50,18 @@ func NewIndex(extractor *ast.Extractor) *Index {
 		extractor = ast.NewExtractor(nil)
 	}
 	return &Index{
-		scanner:       NewScanner(),
-		extractor:     extractor,
-		fileMap:       make(map[string]FileInfo),
-		fileASTs:      make(map[string]*ast.FileAST),
-		defsByName:    make(map[string][]*ast.Symbol),
-		defsByFile:    make(map[string][]*ast.Symbol),
-		callsByCaller: make(map[string][]*ast.CallSite),
-		callsByCallee: make(map[string][]*ast.CallSite),
+		scanner:             NewScanner(),
+		extractor:           extractor,
+		fileMap:             make(map[string]FileInfo),
+		fileASTs:            make(map[string]*ast.FileAST),
+		defsByName:          make(map[string][]*ast.Symbol),
+		typesByName:         make(map[string][]*ast.Symbol),
+		varsByName:          make(map[string][]*ast.Symbol),
+		defsByFile:          make(map[string][]*ast.Symbol),
+		callsByCaller:       make(map[string][]*ast.CallSite),
+		callsByCallee:       make(map[string][]*ast.CallSite),
+		typeUsagesBySymbol:  make(map[string][]*ast.TypeUsage),
+		varAccessesBySymbol: make(map[string][]*ast.VarAccess),
 	}
 }
 
@@ -71,14 +81,19 @@ func (idx *Index) IndexWorkspace(ctx context.Context, rootDir string) (*IndexSta
 	newFileMap := make(map[string]FileInfo)
 	newFileASTs := make(map[string]*ast.FileAST)
 	newDefsByName := make(map[string][]*ast.Symbol)
+	newTypesByName := make(map[string][]*ast.Symbol)
+	newVarsByName := make(map[string][]*ast.Symbol)
 	newDefsByFile := make(map[string][]*ast.Symbol)
 	newCallsByCaller := make(map[string][]*ast.CallSite)
 	newCallsByCallee := make(map[string][]*ast.CallSite)
+	newTypeUsages := make(map[string][]*ast.TypeUsage)
+	newVarAccesses := make(map[string][]*ast.VarAccess)
 
 	totalSymbols := 0
 	totalCalls := 0
+	totalTypes := 0
+	totalVars := 0
 
-	// Parse files concurrently with a worker pool
 	type parseResult struct {
 		fileInfo FileInfo
 		ast      *ast.FileAST
@@ -86,7 +101,7 @@ func (idx *Index) IndexWorkspace(ctx context.Context, rootDir string) (*IndexSta
 	}
 
 	resultCh := make(chan parseResult, len(files))
-	sem := make(chan struct{}, 8) // max 8 concurrent parses
+	sem := make(chan struct{}, 8)
 	var wg sync.WaitGroup
 
 	for _, fi := range files {
@@ -122,6 +137,15 @@ func (idx *Index) IndexWorkspace(ctx context.Context, rootDir string) (*IndexSta
 		for _, sym := range res.ast.Symbols {
 			newDefsByName[sym.Name] = append(newDefsByName[sym.Name], sym)
 			totalSymbols++
+
+			switch sym.Category {
+			case ast.CategoryType:
+				newTypesByName[sym.Name] = append(newTypesByName[sym.Name], sym)
+				totalTypes++
+			case ast.CategoryVariable:
+				newVarsByName[sym.Name] = append(newVarsByName[sym.Name], sym)
+				totalVars++
+			}
 		}
 
 		for _, call := range res.ast.Calls {
@@ -133,9 +157,20 @@ func (idx *Index) IndexWorkspace(ctx context.Context, rootDir string) (*IndexSta
 			}
 			totalCalls++
 		}
+
+		for _, tu := range res.ast.TypeUsages {
+			if tu.UserSymbol != "" {
+				newTypeUsages[tu.UserSymbol] = append(newTypeUsages[tu.UserSymbol], tu)
+			}
+		}
+
+		for _, va := range res.ast.VarAccesses {
+			if va.UserSymbol != "" {
+				newVarAccesses[va.UserSymbol] = append(newVarAccesses[va.UserSymbol], va)
+			}
+		}
 	}
 
-	// Annotate tree with symbol counts
 	annotateTreeSymbols(tree, newDefsByFile)
 
 	idx.mu.Lock()
@@ -145,13 +180,19 @@ func (idx *Index) IndexWorkspace(ctx context.Context, rootDir string) (*IndexSta
 	idx.fileMap = newFileMap
 	idx.fileASTs = newFileASTs
 	idx.defsByName = newDefsByName
+	idx.typesByName = newTypesByName
+	idx.varsByName = newVarsByName
 	idx.defsByFile = newDefsByFile
 	idx.callsByCaller = newCallsByCaller
 	idx.callsByCallee = newCallsByCallee
+	idx.typeUsagesBySymbol = newTypeUsages
+	idx.varAccessesBySymbol = newVarAccesses
 	idx.stats = IndexStats{
 		TotalFiles:   len(newFileMap),
 		TotalSymbols: totalSymbols,
 		TotalCalls:   totalCalls,
+		TotalTypes:   totalTypes,
+		TotalVars:    totalVars,
 		Duration:     time.Since(start),
 		IndexedAt:    time.Now(),
 	}
@@ -245,13 +286,28 @@ func (idx *Index) FindDefinition(file, name string, line, col int) []*ast.Symbol
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
-	// If no name supplied, check file AST at line/col
 	if name == "" && file != "" {
 		if fast, ok := idx.fileASTs[filepath.ToSlash(file)]; ok {
 			for _, call := range fast.Calls {
 				if isPositionInRange(line, col, call.Range) {
 					name = call.Callee
 					break
+				}
+			}
+			if name == "" {
+				for _, tu := range fast.TypeUsages {
+					if isPositionInRange(line, col, tu.Range) {
+						name = tu.TypeName
+						break
+					}
+				}
+			}
+			if name == "" {
+				for _, va := range fast.VarAccesses {
+					if isPositionInRange(line, col, va.Range) {
+						name = va.VarName
+						break
+					}
 				}
 			}
 		}
@@ -266,7 +322,6 @@ func (idx *Index) FindDefinition(file, name string, line, col int) []*ast.Symbol
 		return nil
 	}
 
-	// Prioritize definitions in the same file
 	if file != "" {
 		cleanFile := filepath.ToSlash(file)
 		var sameFile, otherFiles []*ast.Symbol
@@ -331,4 +386,3 @@ func isPositionInRange(line, col int, r ast.Range) bool {
 	}
 	return true
 }
-

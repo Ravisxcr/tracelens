@@ -13,6 +13,7 @@ export interface TraceState {
   callGraphData: CallGraphResponse | null;
   isGraphOpen: boolean;
   isSearching: boolean;
+  isSidebarOpen: boolean;
   cursorLine: number;
   breadcrumbs: string[];
   isLoading: boolean;
@@ -32,6 +33,7 @@ class TraceStore {
     callGraphData: null,
     isGraphOpen: false,
     isSearching: false,
+    isSidebarOpen: true,
     cursorLine: 1,
     breadcrumbs: [],
     isLoading: false,
@@ -157,6 +159,10 @@ class TraceStore {
     this.setState({ isSearching: open ?? !this.state.isSearching });
   }
 
+  toggleSidebar(open?: boolean) {
+    this.setState({ isSidebarOpen: open ?? !this.state.isSidebarOpen });
+  }
+
   async jumpToDefinition(name: string, file?: string, line?: number, col?: number) {
     try {
       const res = await api.fetchDefinition(name, file ?? this.state.activeFilePath ?? undefined, line, col);
@@ -184,6 +190,7 @@ export function useTraceStore(): TraceState & {
   openCallGraph: (symbol: string, file?: string) => Promise<void>;
   closeCallGraph: () => void;
   toggleSearch: (open?: boolean) => void;
+  toggleSidebar: (open?: boolean) => void;
   jumpToDefinition: (name: string, file?: string, line?: number, col?: number) => Promise<void>;
 } {
   const [state, setState] = useState<TraceState>(traceStore.getState());
@@ -203,6 +210,7 @@ export function useTraceStore(): TraceState & {
     openCallGraph: (s, f) => traceStore.openCallGraph(s, f),
     closeCallGraph: () => traceStore.closeCallGraph(),
     toggleSearch: (o) => traceStore.toggleSearch(o),
+    toggleSidebar: (o) => traceStore.toggleSidebar(o),
     jumpToDefinition: (n, f, l, c) => traceStore.jumpToDefinition(n, f, l, c),
   };
 }

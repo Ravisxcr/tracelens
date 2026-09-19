@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { ExternalLink, GitBranch } from 'lucide-react';
+import { ExternalLink, GitBranch, Play, Database, Box } from 'lucide-react';
 import { CallGraphNodeData } from '../../types';
 import { SymbolBadge } from '../UI/SymbolBadge';
 import { useTraceStore } from '../../store/useTraceStore';
@@ -28,52 +28,87 @@ export const CustomSymbolNode: React.FC<CustomNodeProps> = memo(({ data }) => {
     openCallGraph(data.label, data.file);
   };
 
+  // Determine styling based on category
+  const getCategoryStyles = () => {
+    if (data.isRoot) {
+      return {
+        cardBg: 'bg-blue-50 dark:bg-[#1e293b]',
+        borderColor: 'border-blue-500 ring-2 ring-blue-500/30 shadow-md shadow-blue-500/20',
+        headerText: 'TARGET SYMBOL',
+        headerColor: 'text-blue-700 dark:text-blue-300',
+        icon: <Play className="w-3 h-3 text-blue-500 dark:text-blue-400" />,
+      };
+    }
+
+    switch (data.category) {
+      case 'type':
+        return {
+          cardBg: 'bg-emerald-50/80 dark:bg-[#12241d]',
+          borderColor: 'border-emerald-500/80 hover:border-emerald-600 dark:hover:border-emerald-400 shadow-sm shadow-emerald-500/10',
+          headerText: 'DATATYPE / STRUCT',
+          headerColor: 'text-emerald-700 dark:text-emerald-300',
+          icon: <Database className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />,
+        };
+      case 'variable':
+        return {
+          cardBg: 'bg-amber-50/80 dark:bg-[#261f14]',
+          borderColor: 'border-amber-500/80 hover:border-amber-600 dark:hover:border-amber-400 shadow-sm shadow-amber-500/10',
+          headerText: 'VARIABLE / OBJECT',
+          headerColor: 'text-amber-700 dark:text-amber-300',
+          icon: <Box className="w-3 h-3 text-amber-600 dark:text-amber-400" />,
+        };
+      case 'function':
+      default:
+        return {
+          cardBg: 'bg-white dark:bg-[#1b212d]',
+          borderColor: 'border-blue-400/80 dark:border-blue-600/70 hover:border-blue-600 dark:hover:border-blue-400 shadow-sm shadow-blue-500/10',
+          headerText: 'FUNCTION / METHOD',
+          headerColor: 'text-blue-700 dark:text-blue-300',
+          icon: <Play className="w-3 h-3 text-blue-600 dark:text-blue-400" />,
+        };
+    }
+  };
+
+  const styles = getCategoryStyles();
+
   return (
     <div
-      className={`min-w-[220px] max-w-[280px] rounded-lg border shadow-lg transition-all ${
-        data.isRoot
-          ? 'bg-[#1e293b] border-blue-500 shadow-blue-500/20'
-          : 'bg-[#252528] border-[#3e3e42] hover:border-[#55555c]'
-      }`}
+      className={`w-[260px] rounded-lg border shadow-lg transition-all ${styles.cardBg} ${styles.borderColor}`}
     >
       {/* Target handle (incoming calls from callers) */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-blue-400 !w-2.5 !h-2.5 !border-2 !border-[#181818]"
+        className="!bg-blue-500 dark:!bg-blue-400 !w-3 !h-3 !border-2 !border-white dark:!border-[#121214]"
       />
 
-      {/* Node Header */}
-      <div className="px-3 py-1.5 border-b border-[#333336] flex items-center justify-between">
-        <div className="flex items-center space-x-1.5">
-          <SymbolBadge kind={data.kind} size="sm" />
-          <span className="text-[10px] font-mono text-[#888888] uppercase tracking-wider">
-            {data.kind}
+      {/* Node Header with Category Indicator */}
+      <div className="px-2.5 py-1 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+        <div className="flex items-center space-x-1.5 truncate">
+          {styles.icon}
+          <span className={`text-[9px] font-mono font-bold tracking-wider truncate ${styles.headerColor}`}>
+            {styles.headerText}
           </span>
         </div>
 
-        {data.isRoot && (
-          <span className="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-1.5 py-0.5 rounded border border-blue-500/30">
-            Target
-          </span>
-        )}
+        <SymbolBadge kind={data.kind} size="sm" />
       </div>
 
-      {/* Node Content */}
-      <div className="p-3 space-y-1.5">
-        <div className="font-mono text-xs font-semibold text-white truncate" title={data.label}>
+      {/* Main Symbol Info */}
+      <div className="p-2.5 space-y-1">
+        <div className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate" title={data.label}>
           {data.label}
         </div>
 
         {data.file && (
-          <div className="text-[10px] text-[#888888] font-mono truncate" title={`${data.file}:${data.line}`}>
+          <div className="text-[10px] text-slate-500 dark:text-[#888888] font-mono truncate" title={`${data.file}:${data.line}`}>
             {data.file.split('/').pop()}:{data.line}
           </div>
         )}
 
         {data.signature && (
           <div
-            className="text-[10px] text-[#aaaaaa] font-mono bg-[#18181a] p-1.5 rounded border border-[#2d2d30] truncate"
+            className="text-[10px] text-slate-700 dark:text-[#cccccc] font-mono bg-slate-100 dark:bg-black/40 px-2 py-0.5 rounded border border-slate-200 dark:border-white/5 truncate"
             title={data.signature}
           >
             {data.signature}
@@ -82,35 +117,34 @@ export const CustomSymbolNode: React.FC<CustomNodeProps> = memo(({ data }) => {
       </div>
 
       {/* Node Footer Actions */}
-      <div className="px-3 py-1.5 bg-[#1f1f22] rounded-b-lg border-t border-[#333336] flex items-center justify-between text-[11px]">
+      <div className="px-2.5 py-1 bg-slate-100/80 dark:bg-black/25 rounded-b-lg border-t border-slate-200 dark:border-white/10 flex items-center justify-between text-[10.5px]">
         <button
           onClick={handleJumpToCode}
-          className="flex items-center space-x-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+          className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors cursor-pointer"
           title="Jump directly to source in Monaco"
         >
-          <ExternalLink className="w-3 h-3" />
-          <span>Jump to Code</span>
+          <ExternalLink className="w-2.5 h-2.5" />
+          <span>Jump</span>
         </button>
 
         {!data.isRoot && (
           <button
             onClick={handleReCenterGraph}
-            className="flex items-center space-x-1 text-[#aaaaaa] hover:text-white transition-colors cursor-pointer"
+            className="flex items-center space-x-1 text-slate-600 dark:text-[#aaaaaa] hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
             title="Inspect call graph for this symbol"
           >
-            <GitBranch className="w-3 h-3" />
+            <GitBranch className="w-2.5 h-2.5" />
             <span>Trace</span>
           </button>
         )}
       </div>
 
-      {/* Source handle (outgoing calls to callees) */}
+      {/* Source handle (outgoing references) */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-purple-400 !w-2.5 !h-2.5 !border-2 !border-[#181818]"
+        className="!bg-purple-500 dark:!bg-purple-400 !w-3 !h-3 !border-2 !border-white dark:!border-[#121214]"
       />
     </div>
   );
 });
-
