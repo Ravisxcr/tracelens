@@ -78,7 +78,8 @@ ehthumbs.db
 Thumbs.db
 
 # ------------------------------------------
-# Temporary / Scratch Dirs
+# Temporary / Scratch Dirs & Local Go Cache
 # ------------------------------------------
 tmp/
 scratch/
+.go/

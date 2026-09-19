@@ -46,12 +46,17 @@ build-frontend-assets: ## Build Vite frontend bundle and sync to Go embed direct
 	@rm -rf $(BACKEND_DIR)/internal/web/dist/*
 	@cp -r $(FRONTEND_DIR)/dist/* $(BACKEND_DIR)/internal/web/dist/
 
+GOPATH_BIN ?= $(shell go env GOPATH)/bin
+ifeq ($(GOPATH_BIN),/bin)
+	GOPATH_BIN := $(HOME)/go/bin
+endif
+
 .PHONY: install-bin
-install-bin: build ## Build and install tlens to ~/go/bin (or $GOPATH/bin)
-	@mkdir -p $(HOME)/go/bin
-	@cp bin/$(BINARY_NAME) $(HOME)/go/bin/$(BINARY_NAME)
-	@echo -e "$(GREEN)==> Installed $(BINARY_NAME) to $(HOME)/go/bin/$(BINARY_NAME)$(RESET)"
-	@echo -e "Make sure $(HOME)/go/bin is in your PATH. Then you can run: $(CYAN)tlens .$(RESET)"
+install-bin: build ## Build and install tlens to $GOPATH/bin
+	@mkdir -p $(GOPATH_BIN)
+	@cp bin/$(BINARY_NAME) $(GOPATH_BIN)/$(BINARY_NAME)
+	@echo -e "$(GREEN)==> Installed $(BINARY_NAME) to $(GOPATH_BIN)/$(BINARY_NAME)$(RESET)"
+	@echo -e "Make sure $(GOPATH_BIN) is in your PATH. Then you can run: $(CYAN)tlens .$(RESET)"
 
 # ------------------------------------------------------------------------------
 # Development
