@@ -88,12 +88,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up MinGW GCC (Windows only)
-        if: runner.os == 'Windows'
-        uses: egor-tatarinov/setup-mingw@v1
-        with:
-          platform: x64
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
