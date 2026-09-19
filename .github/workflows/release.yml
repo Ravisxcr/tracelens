@@ -4,10 +4,6 @@ on:
   push:
     tags:
       - "v*"
-    paths:
-      - "VERSION"
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       prerelease:
