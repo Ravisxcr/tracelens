@@ -1,0 +1,110 @@
+import { CallGraphResponse, FileContentResponse, IndexStats, SymbolInfo, TreeNode, WatchdogStatus } from '../types';
+
+const API_BASE = '/api';
+
+export async function fetchTree(): Promise<{ tree: TreeNode; stats: IndexStats }> {
+  const res = await fetch(`${API_BASE}/workspace/tree`);
+  if (!res.ok) throw new Error(`Failed to fetch workspace tree: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchFile(path: string): Promise<FileContentResponse> {
+  const res = await fetch(`${API_BASE}/file?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new Error(`Failed to fetch file ${path}: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchDefinition(
+  name?: string,
+  file?: string,
+  line?: number,
+  col?: number
+): Promise<{ query: string; definitions: SymbolInfo[] }> {
+  const params = new URLSearchParams();
+  if (name) params.set('name', name);
+  if (file) params.set('file', file);
+  if (line !== undefined) params.set('line', line.toString());
+  if (col !== undefined) params.set('col', col.toString());
+
+  const res = await fetch(`${API_BASE}/definition?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to resolve definition: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchReferences(name: string): Promise<{ symbol: string; references: any[] }> {
+  const res = await fetch(`${API_BASE}/references?name=${encodeURIComponent(name)}`);
+  if (!res.ok) throw new Error(`Failed to fetch references: ${res.statusText}`);
+  return res.json();
+}
+
+const callGraphClientCache = new Map<string, CallGraphResponse>();
+const MAX_CACHE_SIZE = 128;
+
+export function clearCallGraphCache(): void {
+  callGraphClientCache.clear();
+}
+
+export async function fetchCallGraph(
+  symbol: string,
+  file?: string,
+  depth?: number,
+  limit?: number
+): Promise<CallGraphResponse> {
+  const resolvedDepth = depth ?? 1;
+  const resolvedLimit = limit ?? 50;
+  const cacheKey = `${symbol}|${file || ''}|${resolvedDepth}|${resolvedLimit}`;
+  if (callGraphClientCache.has(cacheKey)) {
+    return callGraphClientCache.get(cacheKey)!;
+  }
+
+  const params = new URLSearchParams();
+  params.set('symbol', symbol);
+  if (file) params.set('file', file);
+  params.set('depth', resolvedDepth.toString());
+  params.set('limit', resolvedLimit.toString());
+
+  const res = await fetch(`${API_BASE}/callgraph?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to fetch call graph: ${res.statusText}`);
+  const data: CallGraphResponse = await res.json();
+
+  if (callGraphClientCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = callGraphClientCache.keys().next().value;
+    if (oldestKey) callGraphClientCache.delete(oldestKey);
+  }
+  callGraphClientCache.set(cacheKey, data);
+
+  return data;
+}
+
+export async function searchSymbols(query: string): Promise<{ query: string; symbols: SymbolInfo[] }> {
+  const res = await fetch(`${API_BASE}/symbols/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error(`Failed to search symbols: ${res.statusText}`);
+  return res.json();
+}
+
+export async function openWorkspace(path: string): Promise<{ path: string; stats: IndexStats }> {
+  clearCallGraphCache();
+  const res = await fetch(`${API_BASE}/workspace/open`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) throw new Error(`Failed to open workspace: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchWatchdogStatus(): Promise<WatchdogStatus> {
+  const res = await fetch(`${API_BASE}/watchdog/status`);
+  if (!res.ok) throw new Error(`Failed to fetch watchdog status: ${res.statusText}`);
+  return res.json();
+}
+
+export async function triggerWatchdogRescan(): Promise<{ stats: IndexStats }> {
+  clearCallGraphCache();
+  const res = await fetch(`${API_BASE}/watchdog/rescan`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to trigger watchdog rescan: ${res.statusText}`);
+  return res.json();
+}
+

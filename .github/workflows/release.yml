@@ -1,0 +1,209 @@
+name: Release Distribution
+
+on:
+  push:
+    tags:
+      - "v*"
+    paths:
+      - "VERSION"
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark this release as a pre-release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Prepare Version & Release Info
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_step.outputs.version }}
+      tag: ${{ steps.version_step.outputs.tag }}
+      is_release: ${{ steps.version_step.outputs.is_release }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Determine Version and Tag
+        id: version_step
+        run: |
+          RAW_VERSION=$(cat VERSION | tr -d '[:space:]')
+          if [ -z "$RAW_VERSION" ]; then
+            echo "ERROR: VERSION file is empty"
+            exit 1
+          fi
+          # Strip leading 'v' if present for clean semver
+          CLEAN_VERSION="${RAW_VERSION#v}"
+          TAG_NAME="v${CLEAN_VERSION}"
+
+          echo "Parsed version: ${CLEAN_VERSION}"
+          echo "Target tag:     ${TAG_NAME}"
+
+          echo "version=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "is_release=true" >> $GITHUB_OUTPUT
+
+  build-distribution:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: prepare-release
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary_name: tlens
+            archive_ext: tar.gz
+
+          # macOS Apple Silicon (ARM64)
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            binary_name: tlens
+            archive_ext: tar.gz
+
+          # Windows x86_64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary_name: tlens.exe
+            archive_ext: zip
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up MinGW GCC (Windows only)
+        if: runner.os == 'Windows'
+        uses: egor-tatarinov/setup-mingw@v1
+        with:
+          platform: x64
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: backend/go.sum
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build Production Frontend Assets
+        run: npm run build
+        working-directory: frontend
+
+      - name: Sync Frontend Assets to Backend Embed Directory
+        run: |
+          mkdir -p backend/internal/web/dist
+          rm -rf backend/internal/web/dist/*
+          cp -r frontend/dist/* backend/internal/web/dist/
+
+      - name: Compile Standalone Binary with Embedded Version
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+          LDFLAGS="-s -w -X 'tracelens/backend/internal/version.Version=${VERSION}' -X 'tracelens/backend/internal/version.GitCommit=${COMMIT}' -X 'tracelens/backend/internal/version.BuildDate=${DATE}'"
+
+          mkdir -p backend/bin
+          cd backend
+          CGO_ENABLED=1 go build -ldflags="${LDFLAGS}" -o bin/${{ matrix.binary_name }} ./cmd/server
+
+      - name: Test Binary Version Flag
+        run: |
+          ./backend/bin/${{ matrix.binary_name }} -version
+
+      - name: Package Distribution Archive
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          ARCHIVE_BASENAME="tlens-v${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          PKG_DIR="dist/${ARCHIVE_BASENAME}"
+
+          mkdir -p "${PKG_DIR}"
+          cp backend/bin/${{ matrix.binary_name }} "${PKG_DIR}/"
+          cp README.md "${PKG_DIR}/" 2>/dev/null || true
+          cp VERSION "${PKG_DIR}/" 2>/dev/null || true
+
+          mkdir -p dist/packages
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            (cd dist && 7z a "packages/${ARCHIVE_BASENAME}.zip" "${ARCHIVE_BASENAME}")
+            (cd dist/packages && sha256sum "${ARCHIVE_BASENAME}.zip" > "${ARCHIVE_BASENAME}.zip.sha256")
+          else
+            tar -czf "dist/packages/${ARCHIVE_BASENAME}.tar.gz" -C dist "${ARCHIVE_BASENAME}"
+            (cd dist/packages && sha256sum "${ARCHIVE_BASENAME}.tar.gz" > "${ARCHIVE_BASENAME}.tar.gz.sha256")
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/packages/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [prepare-release, build-distribution]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Distribution Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: distribution-*
+          merge-multiple: true
+
+      - name: Generate Unified Checksums
+        run: |
+          mkdir -p release-files
+          cp artifacts/*.tar.gz release-files/ 2>/dev/null || true
+          cp artifacts/*.zip release-files/ 2>/dev/null || true
+
+          cd release-files
+          sha256sum * > checksums.txt
+          echo "================ Generated Checksums ================"
+          cat checksums.txt
+          echo "====================================================="
+
+      - name: Publish GitHub Release with Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          name: "TraceLens ${{ needs.prepare-release.outputs.tag }}"
+          draft: false
+          prerelease: ${{ inputs.prerelease || false }}
+          generate_release_notes: true
+          files: |
+            release-files/*.tar.gz
+            release-files/*.zip
+            release-files/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
