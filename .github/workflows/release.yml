@@ -77,13 +77,6 @@ jobs:
             binary_name: tlens
             archive_ext: tar.gz
 
-          # macOS Intel (x86_64)
-          - os: macos-13
-            goos: darwin
-            goarch: amd64
-            binary_name: tlens
-            archive_ext: tar.gz
-
           # Windows x86_64
           - os: windows-latest
             goos: windows
